@@ -1,0 +1,48 @@
+schema: spec-driven
+
+project: 公司員工訂便當系統
+技術:
+  前端: react,tailwild,vite
+  後端: java 21,springboot
+  資料庫: mysql
+  容器: docker (補充,以docker-compose.yml,把前端,後端,資料庫放入)
+  開發環境: dev,staging,production
+技術限制: 
+  前端: 
+    - 禁止使用any型態
+    - call api用axios,支援RWD
+  後端: 
+    - code pattern以Google style 為主 
+    - 禁止使用import static 
+    - DTO只能用java record 
+    - package分別有controller , service , dao 
+    - controller內的class以需求文件位名, 例如文件是A001,名字是A001Controller.java 
+    - service的命名方式以資料表為主,以主表為主,例如table是member , 名字是MemberService
+    - dao 以table名字加上repository
+
+其他限制:
+  - 不能修改../uml內的文件
+  - 文件以中文為主,英文為輔
+
+執行:
+  - 前後端程式編譯後,可以放入docker,以docker-compose.yml 開啟
+
+需求文件路徑: ../uml
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours

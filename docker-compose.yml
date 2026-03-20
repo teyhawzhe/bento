@@ -1,0 +1,43 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bento?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Taipei
+      SPRING_DATASOURCE_USERNAME: bento
+      SPRING_DATASOURCE_PASSWORD: bento
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: bento
+      MYSQL_USER: bento
+      MYSQL_PASSWORD: bento
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+volumes:
+  mysql-data:
