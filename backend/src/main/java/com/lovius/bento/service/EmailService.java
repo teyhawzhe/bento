@@ -12,6 +12,10 @@ public class EmailService {
         sentEmails.add(email + "|" + subject + "|" + password);
     }
 
+    public void sendEmail(String email, String subject, String body) {
+        sentEmails.add(email + "|" + subject + "|" + body);
+    }
+
     public List<String> getSentEmails() {
         return List.copyOf(sentEmails);
     }

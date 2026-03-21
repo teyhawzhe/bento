@@ -143,6 +143,95 @@ public class DemoDataInitializer {
                 nextMonday,
                 alice.getId(),
                 now));
+
+        LocalDate billingStart = LocalDate.now().minusMonths(1).withDayOfMonth(15);
+        LocalDate billingEnd = LocalDate.now().withDayOfMonth(14);
+
+        Supplier monthlySupplier = supplierRepository.save(new Supplier(
+                null,
+                "月結便當",
+                "billing@monthly.local",
+                "02-3344-5566",
+                "林月結",
+                "87654321",
+                true,
+                now));
+
+        Supplier veggieSupplier = supplierRepository.save(new Supplier(
+                null,
+                "蔬食餐盒",
+                "veggie@lunch.local",
+                "02-5566-7788",
+                "陳小青",
+                "99887766",
+                true,
+                now));
+
+        Menu ribs = menuRepository.save(new Menu(
+                null,
+                monthlySupplier.getId(),
+                "排骨便當",
+                "肉類",
+                "月結測試資料",
+                new BigDecimal("120.00"),
+                billingStart,
+                billingEnd,
+                admin.getId(),
+                now,
+                now));
+        Menu drumstick = menuRepository.save(new Menu(
+                null,
+                monthlySupplier.getId(),
+                "雞腿便當",
+                "肉類",
+                "月結測試資料",
+                new BigDecimal("130.00"),
+                billingStart,
+                billingEnd,
+                admin.getId(),
+                now,
+                now));
+        Menu veggie = menuRepository.save(new Menu(
+                null,
+                veggieSupplier.getId(),
+                "蔬食便當",
+                "素食",
+                "月結測試資料",
+                new BigDecimal("110.00"),
+                billingStart,
+                billingEnd,
+                admin.getId(),
+                now,
+                now));
+
+        orderRepository.save(new BentoOrder(
+                null,
+                alice.getId(),
+                ribs.getId(),
+                billingStart.plusDays(1),
+                alice.getId(),
+                now));
+        orderRepository.save(new BentoOrder(
+                null,
+                admin.getId(),
+                ribs.getId(),
+                billingStart.plusDays(2),
+                admin.getId(),
+                now));
+        orderRepository.save(new BentoOrder(
+                null,
+                alice.getId(),
+                drumstick.getId(),
+                billingStart.plusDays(4),
+                alice.getId(),
+                now));
+        orderRepository.save(new BentoOrder(
+                null,
+                admin.getId(),
+                veggie.getId(),
+                billingStart.plusDays(5),
+                admin.getId(),
+                now));
     }
 
     private void seedA004Data(

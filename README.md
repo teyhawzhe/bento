@@ -1,6 +1,6 @@
 # 公司員工訂便當系統
 
-目前已完成 A001「內部員工登入驗證」、A002「員工訂便當」與 A004「錯誤通知信箱設定」第一版，包含前端登入後訂餐流程、管理員菜單維護、供應商建立、錯誤通知收件清單管理，以及後續可銜接 Docker Compose 與 A003 排程的執行邊界。
+目前已完成 A001「內部員工登入驗證」、A002「員工訂便當」、A004「錯誤通知信箱設定」與 A005「月結帳單報表與發信」第一版，包含前端登入後訂餐流程、管理員菜單維護、供應商建立、錯誤通知收件清單管理、月結報表手動觸發與發送記錄查詢，以及後續可銜接 Docker Compose 與 A003/A008 的執行邊界。
 
 ## 專案結構
 
@@ -33,6 +33,8 @@
 - 管理員查詢錯誤通知信箱 `GET /api/settings/error-emails`
 - 管理員新增錯誤通知信箱 `POST /api/settings/error-emails`
 - 管理員刪除錯誤通知信箱 `DELETE /api/settings/error-emails/{id}`
+- 管理員手動觸發月結報表 `POST /api/admin/reports/monthly`
+- 管理員查詢月結發送記錄 `GET /api/admin/reports/monthly`
 
 ## Demo 帳號
 
@@ -46,6 +48,7 @@
 - Email 發送先以服務 stub 模擬，尚未串 SMTP
 - 管理員取消訂餐截止時間先固定為訂餐日前一日 17:00，供後續 A003 排程沿用
 - A004 已提供 `ErrorNotificationRecipientProvider`，讓 A003 排程可直接讀取錯誤通知收件清單
+- A005 已提供 `BillingReportRecipientProvider`，讓 A008 報表收件清單未來可直接接入月結發信流程
 - 真實部署設定、供應商正式通知與月結報表可在 A003/A005 之後接續補強
 
 ## 啟動方式
@@ -85,6 +88,7 @@
 - 已依 OpenSpec A001 規格逐項對照員工登入、管理員登入、忘記密碼、修改密碼、查詢員工、新增員工、CSV 匯入、停用啟用與重設密碼流程。
 - 已依 A002 規格補上員工查詢下週便當、訂餐/改單/取消、個人訂餐記錄、管理員新增供應商、建立菜單、查詢含歷史菜單與編輯菜單流程。
 - 已依 A004 規格補上管理員查詢、新增、刪除錯誤通知信箱 API 與前端設定頁。
+- 已依 A005 規格補上月結期間計算、手動觸發月結報表、月結發送記錄查詢與管理員前端入口。
 - 已修正狀態切換 API 的請求格式相容性，後端可同時接受 `is_active` 與 `isActive`。
 - 已補齊前端登入後分流：員工進入訂餐頁、管理員進入菜單管理頁，且員工端不顯示價格資訊。
 - `docker compose config` 已通過，可確認 compose 結構正確。
@@ -95,6 +99,7 @@
 
 - `suppliers.email`、`menus.supplier_id` 與 `orders.order_date` 已保留 A003 依供應商彙整隔日訂單並寄信所需欄位。
 - `error_notification_emails` 與 `ErrorNotificationRecipientProvider` 已保留 A003 排程失敗時的錯誤通知收件來源。
+- `monthly_billing_logs`、`BillingReportRecipientProvider` 與管理員月結入口已保留 A008 報表收件清單與月結通知整合邊界。
 - `orders.created_by` 已保留 A006 管理員代替員工新增訂餐時的操作者資訊。
 - `orders.employee_id` 與 `orders.order_date` 的唯一鍵，讓未來 A006 代訂仍可沿用同一日覆蓋規則。
 

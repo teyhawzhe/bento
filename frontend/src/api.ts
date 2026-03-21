@@ -9,6 +9,8 @@ import type {
   LoginRequest,
   LoginResponse,
   Menu,
+  MonthlyBillingLog,
+  MonthlyBillingTriggerResult,
   Order,
   Supplier,
 } from "./types";
@@ -228,6 +230,26 @@ export function createErrorEmail(token: string, payload: { email: string }) {
 
 export function deleteErrorEmail(token: string, id: number) {
   return api.delete<ApiMessageResponse>(`/settings/error-emails/${id}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function triggerMonthlyBilling(token: string) {
+  return api.post<MonthlyBillingTriggerResult>(
+    "/admin/reports/monthly",
+    {},
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+}
+
+export function getMonthlyBillingLogs(token: string) {
+  return api.get<MonthlyBillingLog[]>("/admin/reports/monthly", {
     headers: {
       Authorization: `Bearer ${token}`,
     },

@@ -71,6 +71,29 @@ export interface ErrorEmail {
   createdAt: string;
 }
 
+export interface MonthlyBillingLog {
+  id: number;
+  billingPeriodStart: string;
+  billingPeriodEnd: string;
+  supplierId: number;
+  supplierName: string;
+  emailTo: string;
+  status: string;
+  errorMessage: string | null;
+  triggeredBy: number | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+export interface MonthlyBillingTriggerResult {
+  message: string;
+  billingPeriodStart: string;
+  billingPeriodEnd: string;
+  supplierCount: number;
+  recipientCount: number;
+  failedCount: number;
+}
+
 export interface Menu {
   id: number;
   supplierId: number;

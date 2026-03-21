@@ -14,11 +14,13 @@ import {
   getEmployees,
   getErrorEmails,
   getMenus,
+  getMonthlyBillingLogs,
   getMyOrders,
   importEmployees,
   login,
   logout as logoutRequest,
   resetEmployeePassword,
+  triggerMonthlyBilling,
   updateEmployeeStatus,
   updateMenu,
   updateOrder,
@@ -30,6 +32,7 @@ import type {
   ErrorEmail,
   ImportEmployeesResponse,
   Menu,
+  MonthlyBillingLog,
   Order,
   SessionUser,
   Supplier,
@@ -112,6 +115,7 @@ export default function App() {
   const [menus, setMenus] = useState<Menu[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [errorEmails, setErrorEmails] = useState<ErrorEmail[]>([]);
+  const [monthlyBillingLogs, setMonthlyBillingLogs] = useState<MonthlyBillingLog[]>([]);
   const [createResult, setCreateResult] = useState<EmployeeCreatedResponse | null>(null);
   const [importResult, setImportResult] = useState<ImportEmployeesResponse | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -189,14 +193,17 @@ export default function App() {
 
   async function loadAdminData(token: string, history: boolean) {
     try {
-      const [employeesResponse, menusResponse, errorEmailsResponse] = await Promise.all([
+      const [employeesResponse, menusResponse, errorEmailsResponse, monthlyBillingLogsResponse] =
+        await Promise.all([
         getEmployees(token),
         getMenus(token, history),
         getErrorEmails(token),
+        getMonthlyBillingLogs(token),
       ]);
       setEmployees(employeesResponse.data);
       setMenus(menusResponse.data);
       setErrorEmails(errorEmailsResponse.data);
+      setMonthlyBillingLogs(monthlyBillingLogsResponse.data);
     } catch (unknownError) {
       handleHttpError(unknownError, "管理資料讀取失敗");
     }
@@ -461,6 +468,28 @@ export default function App() {
     }
   }
 
+  async function submitMonthlyBillingTrigger() {
+    if (!session) {
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await triggerMonthlyBilling(session.token);
+      setMessage(
+        `${response.data.message}，期間 ${formatDate(response.data.billingPeriodStart)} - ${formatDate(
+          response.data.billingPeriodEnd,
+        )}，共 ${response.data.supplierCount} 家供應商 / ${response.data.recipientCount} 位收件者`,
+      );
+      await loadAdminData(session.token, includeHistory);
+    } catch (unknownError) {
+      handleHttpError(unknownError, "手動觸發月結報表失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function submitCreateMenu() {
     if (!session) {
       return;
@@ -549,6 +578,7 @@ export default function App() {
     setMenus([]);
     setSuppliers([]);
     setErrorEmails([]);
+    setMonthlyBillingLogs([]);
     setDeadlineMessage("");
     setMessage("已安全登出");
     setError("");
@@ -943,6 +973,27 @@ export default function App() {
 
                   <section className="space-y-4">
                     <div>
+                      <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Monthly Billing</p>
+                      <h3 className="mt-3 text-xl font-semibold">月結報表</h3>
+                      <p className="mt-2 text-sm leading-7 text-ink/65">
+                        手動重跑當期月結報表，會寄給供應商信箱與 A008 報表收件清單。
+                      </p>
+                    </div>
+                    <button
+                      className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => void submitMonthlyBillingTrigger()}
+                      type="button"
+                      disabled={loading}
+                    >
+                      手動觸發月結報表
+                    </button>
+                    <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/70">
+                      目前共有 {monthlyBillingLogs.length} 筆月結發送紀錄，可在右側列表查看細節。
+                    </div>
+                  </section>
+
+                  <section className="space-y-4">
+                    <div>
                       <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Suppliers</p>
                       <h3 className="mt-3 text-xl font-semibold">新增供應商</h3>
                     </div>
@@ -1244,6 +1295,58 @@ export default function App() {
                 </div>
               </article>
             </div>
+
+            <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Billing Logs</p>
+                  <h3 className="mt-3 text-xl font-semibold">月結發送記錄</h3>
+                </div>
+                <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                  {monthlyBillingLogs.length} 筆
+                </span>
+              </div>
+
+              <div className="mt-6 grid gap-4">
+                {monthlyBillingLogs.length ? (
+                  monthlyBillingLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-ink">{log.supplierName}</p>
+                          <p className="mt-1 text-sm text-ink/65">
+                            期間 {formatDate(log.billingPeriodStart)} - {formatDate(log.billingPeriodEnd)}
+                          </p>
+                          <p className="text-sm text-ink/55">收件者 {log.emailTo}</p>
+                        </div>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            log.status === "sent"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-red-100 text-red-700"
+                          }`}
+                        >
+                          {log.status}
+                        </span>
+                      </div>
+                      <div className="mt-3 text-sm text-ink/60">
+                        <p>觸發者 {log.triggeredBy ? `#${log.triggeredBy}` : "系統排程"}</p>
+                        <p>建立時間 {formatDateTime(log.createdAt)}</p>
+                        {log.sentAt ? <p>寄送時間 {formatDateTime(log.sentAt)}</p> : null}
+                        {log.errorMessage ? <p className="text-red-700">錯誤：{log.errorMessage}</p> : null}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
+                    目前尚無月結發送記錄
+                  </div>
+                )}
+              </div>
+            </article>
 
             <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
               <div className="flex items-center justify-between gap-4">

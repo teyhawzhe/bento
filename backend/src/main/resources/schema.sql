@@ -69,3 +69,21 @@ CREATE TABLE IF NOT EXISTS error_notification_emails (
     UNIQUE KEY uk_error_notification_emails_email (email),
     CONSTRAINT fk_error_notification_emails_created_by FOREIGN KEY (created_by) REFERENCES employees(id)
 );
+
+CREATE TABLE IF NOT EXISTS monthly_billing_logs (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    billing_period_start DATE NOT NULL,
+    billing_period_end DATE NOT NULL,
+    supplier_id BIGINT NOT NULL,
+    email_to VARCHAR(255) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    error_message VARCHAR(500) NULL,
+    triggered_by BIGINT NULL,
+    sent_at TIMESTAMP NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_monthly_billing_period (billing_period_start, billing_period_end),
+    KEY idx_monthly_billing_supplier (supplier_id),
+    CONSTRAINT fk_monthly_billing_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+    CONSTRAINT fk_monthly_billing_triggered_by FOREIGN KEY (triggered_by) REFERENCES employees(id)
+);
