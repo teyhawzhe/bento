@@ -4,12 +4,15 @@ import {
   cancelOrder,
   changePassword,
   createEmployee,
+  createErrorEmail,
   createMenu,
   createOrder,
   createSupplier,
+  deleteErrorEmail,
   forgotPassword,
   getEmployeeMenus,
   getEmployees,
+  getErrorEmails,
   getMenus,
   getMyOrders,
   importEmployees,
@@ -24,6 +27,7 @@ import type {
   EmployeeCreatedResponse,
   EmployeeMenuOption,
   EmployeeSummary,
+  ErrorEmail,
   ImportEmployeesResponse,
   Menu,
   Order,
@@ -107,6 +111,7 @@ export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [errorEmails, setErrorEmails] = useState<ErrorEmail[]>([]);
   const [createResult, setCreateResult] = useState<EmployeeCreatedResponse | null>(null);
   const [importResult, setImportResult] = useState<ImportEmployeesResponse | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -129,6 +134,7 @@ export default function App() {
     contactPerson: "",
     businessRegistrationNo: "",
   });
+  const [errorEmailForm, setErrorEmailForm] = useState({ email: "" });
   const [menuForm, setMenuForm] = useState({
     supplierId: "",
     name: "",
@@ -183,12 +189,14 @@ export default function App() {
 
   async function loadAdminData(token: string, history: boolean) {
     try {
-      const [employeesResponse, menusResponse] = await Promise.all([
+      const [employeesResponse, menusResponse, errorEmailsResponse] = await Promise.all([
         getEmployees(token),
         getMenus(token, history),
+        getErrorEmails(token),
       ]);
       setEmployees(employeesResponse.data);
       setMenus(menusResponse.data);
+      setErrorEmails(errorEmailsResponse.data);
     } catch (unknownError) {
       handleHttpError(unknownError, "管理資料讀取失敗");
     }
@@ -416,6 +424,43 @@ export default function App() {
     }
   }
 
+  async function submitCreateErrorEmail() {
+    if (!session) {
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await createErrorEmail(session.token, errorEmailForm);
+      setErrorEmails((current) => [response.data, ...current]);
+      setErrorEmailForm({ email: "" });
+      setMessage("錯誤通知信箱已新增");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "新增錯誤通知信箱失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitDeleteErrorEmail(id: number) {
+    if (!session) {
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await deleteErrorEmail(session.token, id);
+      setErrorEmails((current) => current.filter((item) => item.id !== id));
+      setMessage(response.data.message);
+    } catch (unknownError) {
+      handleHttpError(unknownError, "刪除錯誤通知信箱失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function submitCreateMenu() {
     if (!session) {
       return;
@@ -503,6 +548,7 @@ export default function App() {
     setOrders([]);
     setMenus([]);
     setSuppliers([]);
+    setErrorEmails([]);
     setDeadlineMessage("");
     setMessage("已安全登出");
     setError("");
@@ -822,7 +868,7 @@ export default function App() {
                   <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Admin Console</p>
                   <h2 className="mt-3 text-2xl font-semibold">{session.name}</h2>
                   <p className="mt-2 text-sm text-ink/65">
-                    這裡可以管理供應商、建立菜單、查詢歷史菜單，以及維護員工帳號。
+                    這裡可以管理供應商、建立菜單、錯誤通知信箱，並維護員工帳號。
                   </p>
                 </div>
                 <button
@@ -838,6 +884,63 @@ export default function App() {
             <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
               <article className="rounded-[2rem] border border-white/60 bg-[#f1e8db]/80 p-6 shadow-float backdrop-blur sm:p-8">
                 <div className="space-y-8">
+                  <section className="space-y-4">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Settings</p>
+                      <h3 className="mt-3 text-xl font-semibold">錯誤通知信箱</h3>
+                      <p className="mt-2 text-sm leading-7 text-ink/65">
+                        A003 供應商通知排程失敗時，會直接讀取這份收件清單。
+                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <input
+                        className="flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                        placeholder="ops-alerts@company.local"
+                        value={errorEmailForm.email}
+                        onChange={(event) =>
+                          setErrorEmailForm({ email: event.target.value })
+                        }
+                      />
+                      <button
+                        className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => void submitCreateErrorEmail()}
+                        type="button"
+                        disabled={loading}
+                      >
+                        新增
+                      </button>
+                    </div>
+                    <div className="grid gap-3">
+                      {errorEmails.length ? (
+                        errorEmails.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-4"
+                          >
+                            <div>
+                              <p className="font-medium text-ink">{entry.email}</p>
+                              <p className="mt-1 text-xs text-ink/45">
+                                建立者 #{entry.createdBy} / {formatDateTime(entry.createdAt)}
+                              </p>
+                            </div>
+                            <button
+                              className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                              onClick={() => void submitDeleteErrorEmail(entry.id)}
+                              type="button"
+                              disabled={loading}
+                            >
+                              刪除
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
+                          目前尚未設定錯誤通知信箱
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
                   <section className="space-y-4">
                     <div>
                       <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Suppliers</p>

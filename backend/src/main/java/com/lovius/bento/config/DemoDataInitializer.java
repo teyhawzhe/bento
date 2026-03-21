@@ -1,10 +1,12 @@
 package com.lovius.bento.config;
 
 import com.lovius.bento.dao.EmployeeRepository;
+import com.lovius.bento.dao.ErrorNotificationEmailRepository;
 import com.lovius.bento.dao.MenuRepository;
 import com.lovius.bento.dao.OrderRepository;
 import com.lovius.bento.dao.SupplierRepository;
 import com.lovius.bento.model.Employee;
+import com.lovius.bento.model.ErrorNotificationEmail;
 import com.lovius.bento.model.Menu;
 import com.lovius.bento.model.Supplier;
 import com.lovius.bento.model.BentoOrder;
@@ -23,6 +25,7 @@ public class DemoDataInitializer {
     public ApplicationRunner seedEmployees(
             EmployeeRepository employeeRepository,
             PasswordPolicyService passwordPolicyService,
+            ErrorNotificationEmailRepository errorNotificationEmailRepository,
             SupplierRepository supplierRepository,
             MenuRepository menuRepository,
             OrderRepository orderRepository) {
@@ -56,6 +59,7 @@ public class DemoDataInitializer {
                     false);
 
             seedA002Data(employeeRepository, supplierRepository, menuRepository, orderRepository);
+            seedA004Data(employeeRepository, errorNotificationEmailRepository);
         };
     }
 
@@ -139,5 +143,20 @@ public class DemoDataInitializer {
                 nextMonday,
                 alice.getId(),
                 now));
+    }
+
+    private void seedA004Data(
+            EmployeeRepository employeeRepository,
+            ErrorNotificationEmailRepository errorNotificationEmailRepository) {
+        if (errorNotificationEmailRepository.existsByEmail("alerts@company.local")) {
+            return;
+        }
+
+        Employee admin = employeeRepository.findByUsername("admin").orElseThrow();
+        errorNotificationEmailRepository.save(new ErrorNotificationEmail(
+                null,
+                "alerts@company.local",
+                admin.getId(),
+                Instant.now()));
     }
 }

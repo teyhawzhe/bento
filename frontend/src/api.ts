@@ -4,6 +4,7 @@ import type {
   EmployeeMenuOption,
   EmployeeCreatedResponse,
   EmployeeSummary,
+  ErrorEmail,
   ImportEmployeesResponse,
   LoginRequest,
   LoginResponse,
@@ -203,6 +204,30 @@ export function createSupplier(
   },
 ) {
   return api.post<Supplier>("/suppliers", payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getErrorEmails(token: string) {
+  return api.get<ErrorEmail[]>("/settings/error-emails", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function createErrorEmail(token: string, payload: { email: string }) {
+  return api.post<ErrorEmail>("/settings/error-emails", payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function deleteErrorEmail(token: string, id: number) {
+  return api.delete<ApiMessageResponse>(`/settings/error-emails/${id}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },

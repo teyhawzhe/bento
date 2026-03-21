@@ -59,3 +59,13 @@ CREATE TABLE IF NOT EXISTS orders (
     CONSTRAINT fk_orders_menu FOREIGN KEY (menu_id) REFERENCES menus(id),
     CONSTRAINT fk_orders_created_by FOREIGN KEY (created_by) REFERENCES employees(id)
 );
+
+CREATE TABLE IF NOT EXISTS error_notification_emails (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    email VARCHAR(255) NOT NULL,
+    created_by BIGINT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_error_notification_emails_email (email),
+    CONSTRAINT fk_error_notification_emails_created_by FOREIGN KEY (created_by) REFERENCES employees(id)
+);

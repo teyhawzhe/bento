@@ -64,6 +64,13 @@ export interface Supplier {
   createdAt: string;
 }
 
+export interface ErrorEmail {
+  id: number;
+  email: string;
+  createdBy: number;
+  createdAt: string;
+}
+
 export interface Menu {
   id: number;
   supplierId: number;
