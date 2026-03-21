@@ -1,11 +1,15 @@
 import axios from "axios";
 import type {
   ApiMessageResponse,
+  EmployeeMenuOption,
   EmployeeCreatedResponse,
   EmployeeSummary,
   ImportEmployeesResponse,
   LoginRequest,
   LoginResponse,
+  Menu,
+  Order,
+  Supplier,
 } from "./types";
 
 const api = axios.create({
@@ -96,4 +100,111 @@ export function resetEmployeePassword(token: string, employeeId: number, newPass
       },
     },
   );
+}
+
+export function getEmployeeMenus(token: string) {
+  return api.get<EmployeeMenuOption[]>("/orders/menu", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getMyOrders(token: string) {
+  return api.get<Order[]>("/orders/me", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function createOrder(token: string, payload: { menuId: number; orderDate: string }) {
+  return api.post<Order>("/orders", payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function updateOrder(token: string, orderId: number, payload: { menuId: number }) {
+  return api.patch<Order>(`/orders/${orderId}`, payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function cancelOrder(token: string, orderId: number) {
+  return api.delete<ApiMessageResponse>(`/orders/${orderId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getMenus(token: string, includeHistory: boolean) {
+  return api.get<Menu[]>("/menus", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    params: {
+      include_history: includeHistory,
+    },
+  });
+}
+
+export function createMenu(
+  token: string,
+  payload: {
+    supplierId: number;
+    name: string;
+    category: string;
+    description: string;
+    price: number;
+    validFrom: string;
+    validTo: string;
+  },
+) {
+  return api.post<Menu>("/menus", payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function updateMenu(
+  token: string,
+  menuId: number,
+  payload: Partial<{
+    supplierId: number;
+    name: string;
+    category: string;
+    description: string;
+    price: number;
+    validFrom: string;
+    validTo: string;
+  }>,
+) {
+  return api.patch<Menu>(`/menus/${menuId}`, payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function createSupplier(
+  token: string,
+  payload: {
+    name: string;
+    email: string;
+    phone: string;
+    contactPerson: string;
+    businessRegistrationNo: string;
+  },
+) {
+  return api.post<Supplier>("/suppliers", payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
 }

@@ -52,3 +52,48 @@ export interface SessionUser {
   username: string;
   name: string;
 }
+
+export interface Supplier {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  contactPerson: string;
+  businessRegistrationNo: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface Menu {
+  id: number;
+  supplierId: number;
+  name: string;
+  category: string;
+  description: string;
+  price: number;
+  validFrom: string;
+  validTo: string;
+  createdBy: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmployeeMenuOption {
+  id: number;
+  name: string;
+  category: string;
+  description: string;
+  validFrom: string;
+  validTo: string;
+}
+
+export interface Order {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  menuId: number;
+  menuName: string;
+  orderDate: string;
+  createdBy: number;
+  createdAt: string;
+}
