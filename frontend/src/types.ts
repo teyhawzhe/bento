@@ -71,6 +71,13 @@ export interface ErrorEmail {
   createdAt: string;
 }
 
+export interface ReportEmail {
+  id: number;
+  email: string;
+  createdBy: number;
+  createdAt: string;
+}
+
 export interface MonthlyBillingLog {
   id: number;
   billingPeriodStart: string;

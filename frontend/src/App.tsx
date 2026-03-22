@@ -6,15 +6,18 @@ import {
   createAdminOrder,
   createEmployee,
   createErrorEmail,
+  createReportEmail,
   createMenu,
   createOrder,
   createSupplier,
   deleteErrorEmail,
+  deleteReportEmail,
   forgotPassword,
   getAdminOrders,
   getEmployeeMenus,
   getEmployees,
   getErrorEmails,
+  getReportEmails,
   getMenus,
   getMonthlyBillingLogs,
   getMyOrders,
@@ -40,6 +43,7 @@ import type {
   Menu,
   MonthlyBillingLog,
   Order,
+  ReportEmail,
   SessionUser,
   Supplier,
   UserRole,
@@ -134,6 +138,7 @@ export default function App() {
   const [menus, setMenus] = useState<Menu[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [errorEmails, setErrorEmails] = useState<ErrorEmail[]>([]);
+  const [reportEmails, setReportEmails] = useState<ReportEmail[]>([]);
   const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
   const [monthlyBillingLogs, setMonthlyBillingLogs] = useState<MonthlyBillingLog[]>([]);
   const [createResult, setCreateResult] = useState<EmployeeCreatedResponse | null>(null);
@@ -159,6 +164,7 @@ export default function App() {
     businessRegistrationNo: "",
   });
   const [errorEmailForm, setErrorEmailForm] = useState({ email: "" });
+  const [reportEmailForm, setReportEmailForm] = useState({ email: "" });
   const [menuForm, setMenuForm] = useState({
     supplierId: "",
     name: "",
@@ -280,6 +286,7 @@ export default function App() {
         employeesResponse,
         menusResponse,
         errorEmailsResponse,
+        reportEmailsResponse,
         monthlyBillingLogsResponse,
         adminOrdersResponse,
         suppliersResponse,
@@ -287,6 +294,7 @@ export default function App() {
         getEmployees(token),
         getMenus(token, history),
         getErrorEmails(token),
+        getReportEmails(token),
         getMonthlyBillingLogs(token),
         getAdminOrders(token, {
           date: filters.date || undefined,
@@ -300,6 +308,7 @@ export default function App() {
       setEmployees(employeesResponse.data);
       setMenus(menusResponse.data);
       setErrorEmails(errorEmailsResponse.data);
+      setReportEmails(reportEmailsResponse.data);
       setMonthlyBillingLogs(monthlyBillingLogsResponse.data);
       setAdminOrders(adminOrdersResponse.data);
       setSuppliers(suppliersResponse.data);
@@ -636,6 +645,43 @@ export default function App() {
     }
   }
 
+  async function submitCreateReportEmail() {
+    if (!session) {
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await createReportEmail(session.token, reportEmailForm);
+      setReportEmails((current) => [response.data, ...current]);
+      setReportEmailForm({ email: "" });
+      setMessage("報表收件信箱已新增");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "新增報表收件信箱失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitDeleteReportEmail(id: number) {
+    if (!session) {
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await deleteReportEmail(session.token, id);
+      setReportEmails((current) => current.filter((item) => item.id !== id));
+      setMessage(response.data.message);
+    } catch (unknownError) {
+      handleHttpError(unknownError, "刪除報表收件信箱失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function submitMonthlyBillingTrigger() {
     if (!session) {
       return;
@@ -768,6 +814,7 @@ export default function App() {
     setMenus([]);
     setSuppliers([]);
     setErrorEmails([]);
+    setReportEmails([]);
     setAdminOrders([]);
     setMonthlyBillingLogs([]);
     setSelectedSupplier(null);
@@ -1184,6 +1231,61 @@ export default function App() {
                     </button>
                     <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/70">
                       目前共有 {monthlyBillingLogs.length} 筆月結發送紀錄，可在右側列表查看細節。
+                    </div>
+                  </section>
+
+                  <section className="space-y-4">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Report Recipients</p>
+                      <h3 className="mt-3 text-xl font-semibold">月結報表收件信箱</h3>
+                      <p className="mt-2 text-sm leading-7 text-ink/65">
+                        A005 月結報表寄送時，除了供應商外，也會寄送到這份內部收件清單。
+                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <input
+                        className="flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                        placeholder="finance-reports@company.local"
+                        value={reportEmailForm.email}
+                        onChange={(event) => setReportEmailForm({ email: event.target.value })}
+                      />
+                      <button
+                        className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => void submitCreateReportEmail()}
+                        type="button"
+                        disabled={loading}
+                      >
+                        新增
+                      </button>
+                    </div>
+                    <div className="grid gap-3">
+                      {reportEmails.length ? (
+                        reportEmails.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-4"
+                          >
+                            <div>
+                              <p className="font-medium text-ink">{entry.email}</p>
+                              <p className="mt-1 text-xs text-ink/45">
+                                建立者 #{entry.createdBy} / {formatDateTime(entry.createdAt)}
+                              </p>
+                            </div>
+                            <button
+                              className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                              onClick={() => void submitDeleteReportEmail(entry.id)}
+                              type="button"
+                              disabled={loading}
+                            >
+                              刪除
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
+                          目前尚未設定報表收件信箱
+                        </div>
+                      )}
                     </div>
                   </section>
 

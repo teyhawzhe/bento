@@ -13,6 +13,7 @@ import type {
   MonthlyBillingLog,
   MonthlyBillingTriggerResult,
   Order,
+  ReportEmail,
   Supplier,
 } from "./types";
 
@@ -298,6 +299,30 @@ export function createErrorEmail(token: string, payload: { email: string }) {
 
 export function deleteErrorEmail(token: string, id: number) {
   return api.delete<ApiMessageResponse>(`/settings/error-emails/${id}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getReportEmails(token: string) {
+  return api.get<ReportEmail[]>("/settings/report-emails", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function createReportEmail(token: string, payload: { email: string }) {
+  return api.post<ReportEmail>("/settings/report-emails", payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function deleteReportEmail(token: string, id: number) {
+  return api.delete<ApiMessageResponse>(`/settings/report-emails/${id}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },

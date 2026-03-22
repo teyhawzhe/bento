@@ -70,6 +70,16 @@ CREATE TABLE IF NOT EXISTS error_notification_emails (
     CONSTRAINT fk_error_notification_emails_created_by FOREIGN KEY (created_by) REFERENCES employees(id)
 );
 
+CREATE TABLE IF NOT EXISTS report_recipient_emails (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    email VARCHAR(255) NOT NULL,
+    created_by BIGINT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_report_recipient_emails_email (email),
+    CONSTRAINT fk_report_recipient_emails_created_by FOREIGN KEY (created_by) REFERENCES employees(id)
+);
+
 CREATE TABLE IF NOT EXISTS monthly_billing_logs (
     id BIGINT NOT NULL AUTO_INCREMENT,
     billing_period_start DATE NOT NULL,
