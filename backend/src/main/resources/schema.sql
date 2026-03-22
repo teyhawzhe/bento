@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS orders (
     employee_id BIGINT NOT NULL,
     menu_id BIGINT NOT NULL,
     order_date DATE NOT NULL,
-    created_by BIGINT NOT NULL,
+    created_by BIGINT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_orders_employee_date (employee_id, order_date),

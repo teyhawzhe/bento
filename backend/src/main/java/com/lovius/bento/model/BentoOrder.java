@@ -54,6 +54,10 @@ public class BentoOrder {
         return createdBy;
     }
 
+    public void setCreatedBy(Long createdBy) {
+        this.createdBy = createdBy;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }

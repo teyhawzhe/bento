@@ -1,6 +1,8 @@
 package com.lovius.bento.controller;
 
 import com.lovius.bento.dto.ApiMessageResponse;
+import com.lovius.bento.dto.AdminOrderResponse;
+import com.lovius.bento.dto.CreateAdminOrderRequest;
 import com.lovius.bento.dto.CreateMenuRequest;
 import com.lovius.bento.dto.CreateOrderRequest;
 import com.lovius.bento.dto.CreateSupplierRequest;
@@ -18,6 +20,7 @@ import com.lovius.bento.service.OrderService;
 import com.lovius.bento.service.SupplierService;
 import com.lovius.bento.service.TokenService;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -144,6 +147,24 @@ public class A002Controller {
         requireRole(authorizationHeader, "admin");
         orderService.cancelOrderByAdmin(orderId);
         return new ApiMessageResponse("已取消指定員工訂餐");
+    }
+
+    @GetMapping("/admin/orders")
+    public List<AdminOrderResponse> getOrdersByAdmin(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestParam(name = "date", required = false) LocalDate orderDate,
+            @RequestParam(name = "employee_id", required = false) Long employeeId) {
+        requireRole(authorizationHeader, "admin");
+        return orderService.getAdminOrders(orderDate, employeeId);
+    }
+
+    @PostMapping("/admin/orders")
+    public ResponseEntity<OrderResponse> createOrderByAdmin(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @Valid @RequestBody CreateAdminOrderRequest request) {
+        AuthenticatedUser user = requireRole(authorizationHeader, "admin");
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(orderService.createOrderByAdmin(user, request));
     }
 
     private AuthenticatedUser requireRole(String authorizationHeader, String expectedRole) {

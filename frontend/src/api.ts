@@ -1,5 +1,6 @@
 import axios from "axios";
 import type {
+  AdminOrder,
   ApiMessageResponse,
   EmployeeMenuOption,
   EmployeeCreatedResponse,
@@ -139,6 +140,32 @@ export function updateOrder(token: string, orderId: number, payload: { menuId: n
 
 export function cancelOrder(token: string, orderId: number) {
   return api.delete<ApiMessageResponse>(`/orders/${orderId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getAdminOrders(
+  token: string,
+  params: Partial<{
+    date: string;
+    employee_id: number;
+  }>,
+) {
+  return api.get<AdminOrder[]>("/admin/orders", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    params,
+  });
+}
+
+export function createAdminOrder(
+  token: string,
+  payload: { employeeId: number; menuId: number; orderDate: string },
+) {
+  return api.post<Order>("/admin/orders", payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },

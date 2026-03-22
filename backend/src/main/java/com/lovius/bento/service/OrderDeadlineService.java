@@ -60,11 +60,26 @@ public class OrderDeadlineService {
     }
 
     public void ensureAdminCancellationWindowOpen(LocalDate orderDate) {
+        ensureAdminWindowOpen(orderDate, "已超過管理員取消訂餐截止時間");
+    }
+
+    public void ensureAdminOrderDateIsTomorrow(LocalDate orderDate) {
+        LocalDate tomorrow = ZonedDateTime.now(clock).toLocalDate().plusDays(1);
+        if (!tomorrow.equals(orderDate)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "僅允許建立隔日訂單");
+        }
+    }
+
+    public void ensureAdminOrderCreationWindowOpen(LocalDate orderDate) {
+        ensureAdminWindowOpen(orderDate, "已超過代訂截止時間");
+    }
+
+    private void ensureAdminWindowOpen(LocalDate orderDate, String message) {
         ZonedDateTime now = ZonedDateTime.now(clock);
         LocalDateTime cutoffDateTime = LocalDateTime.of(orderDate.minusDays(1), LocalTime.of(17, 0));
         ZonedDateTime cutoff = ZonedDateTime.of(cutoffDateTime, ZONE_ID);
         if (!now.isBefore(cutoff)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "已超過管理員取消訂餐截止時間");
+            throw new ApiException(HttpStatus.FORBIDDEN, message);
         }
     }
 }

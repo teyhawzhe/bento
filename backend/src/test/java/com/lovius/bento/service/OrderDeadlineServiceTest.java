@@ -68,6 +68,29 @@ class OrderDeadlineServiceTest {
         assertEquals("已超過管理員取消訂餐截止時間", exception.getMessage());
     }
 
+    @Test
+    void adminOrderDateMustBeTomorrow() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T09:00:00+08:00"));
+
+        assertDoesNotThrow(() -> service.ensureAdminOrderDateIsTomorrow(LocalDate.of(2026, 4, 1)));
+        ApiException exception = assertThrows(
+                ApiException.class,
+                () -> service.ensureAdminOrderDateIsTomorrow(LocalDate.of(2026, 4, 2)));
+
+        assertEquals("僅允許建立隔日訂單", exception.getMessage());
+    }
+
+    @Test
+    void adminOrderCreationWindowClosedAtPreviousDayFivePm() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T17:00:00+08:00"));
+
+        ApiException exception = assertThrows(
+                ApiException.class,
+                () -> service.ensureAdminOrderCreationWindowOpen(LocalDate.of(2026, 4, 1)));
+
+        assertEquals("已超過代訂截止時間", exception.getMessage());
+    }
+
     private Clock fixedClock(String isoOffsetDateTime) {
         return Clock.fixed(OffsetDateTime.parse(isoOffsetDateTime).toInstant(), ZONE_ID);
     }

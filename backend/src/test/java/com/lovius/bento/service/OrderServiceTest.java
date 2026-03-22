@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.lovius.bento.dao.EmployeeRepository;
 import com.lovius.bento.dao.OrderRepository;
+import com.lovius.bento.dto.CreateAdminOrderRequest;
 import com.lovius.bento.dto.CreateOrderRequest;
 import com.lovius.bento.dto.OrderResponse;
 import com.lovius.bento.exception.ApiException;
@@ -110,6 +111,45 @@ class OrderServiceTest {
         verify(orderRepository).deleteById(88L);
     }
 
+    @Test
+    void createOrderByAdminPersistsAdminAsCreatedBy() {
+        AuthenticatedUser admin = new AuthenticatedUser(9L, "admin", "admin");
+        LocalDate orderDate = LocalDate.of(2026, 4, 1);
+        Menu menu = menu(20L, orderDate, orderDate);
+
+        when(employeeRepository.findById(2L)).thenReturn(Optional.of(employee(2L, "Alice Chen")));
+        when(menuService.getRequiredMenu(20L)).thenReturn(menu);
+        when(orderRepository.findByEmployeeIdAndOrderDate(2L, orderDate)).thenReturn(Optional.empty());
+
+        OrderResponse response = orderService.createOrderByAdmin(admin, new CreateAdminOrderRequest(2L, 20L, orderDate));
+
+        ArgumentCaptor<BentoOrder> captor = ArgumentCaptor.forClass(BentoOrder.class);
+        verify(orderDeadlineService).ensureAdminOrderDateIsTomorrow(orderDate);
+        verify(orderDeadlineService).ensureAdminOrderCreationWindowOpen(orderDate);
+        verify(orderRepository).save(captor.capture());
+        assertEquals(9L, captor.getValue().getCreatedBy());
+        assertEquals(2L, captor.getValue().getEmployeeId());
+        assertEquals(9L, response.createdBy());
+    }
+
+    @Test
+    void createOrderByAdminRejectsExistingOrder() {
+        AuthenticatedUser admin = new AuthenticatedUser(9L, "admin", "admin");
+        LocalDate orderDate = LocalDate.of(2026, 4, 1);
+        BentoOrder existingOrder = new BentoOrder(88L, 2L, 10L, orderDate, 2L, Instant.now());
+
+        when(employeeRepository.findById(2L)).thenReturn(Optional.of(employee(2L, "Alice Chen")));
+        when(orderRepository.findByEmployeeIdAndOrderDate(2L, orderDate)).thenReturn(Optional.of(existingOrder));
+        when(menuService.getRequiredMenu(20L)).thenReturn(menu(20L, orderDate, orderDate));
+
+        ApiException exception = assertThrows(
+                ApiException.class,
+                () -> orderService.createOrderByAdmin(admin, new CreateAdminOrderRequest(2L, 20L, orderDate)));
+
+        assertEquals("該員工於指定日期已有訂單", exception.getMessage());
+        verify(orderRepository, never()).save(any());
+    }
+
     private Menu menu(Long id, LocalDate validFrom, LocalDate validTo) {
         return new Menu(
                 id,
@@ -126,11 +166,15 @@ class OrderServiceTest {
     }
 
     private Employee employee() {
+        return employee(1L, "Alice Chen");
+    }
+
+    private Employee employee(Long id, String name) {
         return new Employee(
-                1L,
+                id,
                 "alice",
                 "hash",
-                "Alice Chen",
+                name,
                 "alice@company.local",
                 false,
                 true,

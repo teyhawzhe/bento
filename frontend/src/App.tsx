@@ -3,6 +3,7 @@ import axios from "axios";
 import {
   cancelOrder,
   changePassword,
+  createAdminOrder,
   createEmployee,
   createErrorEmail,
   createMenu,
@@ -10,6 +11,7 @@ import {
   createSupplier,
   deleteErrorEmail,
   forgotPassword,
+  getAdminOrders,
   getEmployeeMenus,
   getEmployees,
   getErrorEmails,
@@ -26,6 +28,7 @@ import {
   updateOrder,
 } from "./api";
 import type {
+  AdminOrder,
   EmployeeCreatedResponse,
   EmployeeMenuOption,
   EmployeeSummary,
@@ -85,6 +88,19 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function tomorrowDate() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return toDateInputValue(tomorrow);
+}
+
 function nextWeekdays() {
   const days: string[] = [];
   const now = new Date();
@@ -115,6 +131,7 @@ export default function App() {
   const [menus, setMenus] = useState<Menu[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [errorEmails, setErrorEmails] = useState<ErrorEmail[]>([]);
+  const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
   const [monthlyBillingLogs, setMonthlyBillingLogs] = useState<MonthlyBillingLog[]>([]);
   const [createResult, setCreateResult] = useState<EmployeeCreatedResponse | null>(null);
   const [importResult, setImportResult] = useState<ImportEmployeesResponse | null>(null);
@@ -149,6 +166,15 @@ export default function App() {
     validTo: nextWeekdays()[4] ?? "",
   });
   const [editingMenus, setEditingMenus] = useState<Record<number, Partial<Menu>>>({});
+  const [adminOrderFilters, setAdminOrderFilters] = useState({
+    date: tomorrowDate(),
+    employeeId: "",
+  });
+  const [adminOrderForm, setAdminOrderForm] = useState({
+    employeeId: "",
+    orderDate: tomorrowDate(),
+    menuId: "",
+  });
 
   useEffect(() => {
     if (!session || session.role !== role) {
@@ -160,8 +186,43 @@ export default function App() {
       return;
     }
 
-    void loadAdminData(session.token, includeHistory);
-  }, [includeHistory, role, session]);
+    void loadAdminData(session.token, includeHistory, adminOrderFilters);
+  }, [adminOrderFilters, includeHistory, role, session]);
+
+  useEffect(() => {
+    if (role !== "admin" || !session) {
+      return;
+    }
+
+    const availableMenus = menus.filter(
+      (menu) =>
+        menu.validFrom <= adminOrderForm.orderDate && adminOrderForm.orderDate <= menu.validTo,
+    );
+    const selectedMenuExists = availableMenus.some(
+      (menu) => String(menu.id) === adminOrderForm.menuId,
+    );
+
+    if (!selectedMenuExists) {
+      setAdminOrderForm((current) => ({
+        ...current,
+        menuId: availableMenus[0] ? String(availableMenus[0].id) : "",
+      }));
+    }
+  }, [adminOrderForm.menuId, adminOrderForm.orderDate, menus, role, session]);
+
+  useEffect(() => {
+    if (role !== "admin" || !session || adminOrderForm.employeeId) {
+      return;
+    }
+
+    const defaultEmployee = employees.find((employee) => !employee.isAdmin) ?? employees[0];
+    if (defaultEmployee) {
+      setAdminOrderForm((current) => ({
+        ...current,
+        employeeId: String(defaultEmployee.id),
+      }));
+    }
+  }, [adminOrderForm.employeeId, employees, role, session]);
 
   async function loadEmployeeData(token: string) {
     try {
@@ -191,19 +252,33 @@ export default function App() {
     }
   }
 
-  async function loadAdminData(token: string, history: boolean) {
+  async function loadAdminData(
+    token: string,
+    history: boolean,
+    filters: { date: string; employeeId: string },
+  ) {
     try {
-      const [employeesResponse, menusResponse, errorEmailsResponse, monthlyBillingLogsResponse] =
-        await Promise.all([
+      const [
+        employeesResponse,
+        menusResponse,
+        errorEmailsResponse,
+        monthlyBillingLogsResponse,
+        adminOrdersResponse,
+      ] = await Promise.all([
         getEmployees(token),
         getMenus(token, history),
         getErrorEmails(token),
         getMonthlyBillingLogs(token),
+        getAdminOrders(token, {
+          date: filters.date || undefined,
+          employee_id: filters.employeeId ? Number(filters.employeeId) : undefined,
+        }),
       ]);
       setEmployees(employeesResponse.data);
       setMenus(menusResponse.data);
       setErrorEmails(errorEmailsResponse.data);
       setMonthlyBillingLogs(monthlyBillingLogsResponse.data);
+      setAdminOrders(adminOrdersResponse.data);
     } catch (unknownError) {
       handleHttpError(unknownError, "管理資料讀取失敗");
     }
@@ -230,7 +305,7 @@ export default function App() {
       if (role === "employee") {
         await loadEmployeeData(nextSession.token);
       } else {
-        await loadAdminData(nextSession.token, includeHistory);
+        await loadAdminData(nextSession.token, includeHistory, adminOrderFilters);
       }
     } catch (unknownError) {
       handleHttpError(unknownError, "登入失敗");
@@ -290,7 +365,7 @@ export default function App() {
       setCreateResult(response.data);
       setCreateForm({ username: "", name: "", email: "" });
       setMessage(response.data.message);
-      await loadAdminData(session.token, includeHistory);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "新增員工失敗");
     } finally {
@@ -310,7 +385,7 @@ export default function App() {
       const response = await importEmployees(session.token, selectedFile);
       setImportResult(response.data);
       setMessage(response.data.message);
-      await loadAdminData(session.token, includeHistory);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "CSV 匯入失敗");
     } finally {
@@ -327,7 +402,7 @@ export default function App() {
     try {
       await updateEmployeeStatus(session.token, employee.id, !employee.isActive);
       setMessage(employee.isActive ? "員工已停用" : "員工已啟用");
-      await loadAdminData(session.token, includeHistory);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "更新狀態失敗");
     } finally {
@@ -346,7 +421,7 @@ export default function App() {
       await resetEmployeePassword(session.token, employeeId, nextPassword);
       setMessage("密碼已重設，系統已送出通知");
       setResetForms((current) => ({ ...current, [employeeId]: "" }));
-      await loadAdminData(session.token, includeHistory);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "重設密碼失敗");
     } finally {
@@ -482,7 +557,7 @@ export default function App() {
           response.data.billingPeriodEnd,
         )}，共 ${response.data.supplierCount} 家供應商 / ${response.data.recipientCount} 位收件者`,
       );
-      await loadAdminData(session.token, includeHistory);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "手動觸發月結報表失敗");
     } finally {
@@ -517,7 +592,7 @@ export default function App() {
         validFrom: nextWeekdays()[0] ?? "",
         validTo: nextWeekdays()[4] ?? "",
       });
-      await loadAdminData(session.token, includeHistory);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "建立菜單失敗");
     } finally {
@@ -552,9 +627,31 @@ export default function App() {
         delete next[menuId];
         return next;
       });
-      await loadAdminData(session.token, includeHistory);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "更新菜單失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitAdminOrder() {
+    if (!session) {
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      await createAdminOrder(session.token, {
+        employeeId: Number(adminOrderForm.employeeId),
+        menuId: Number(adminOrderForm.menuId),
+        orderDate: adminOrderForm.orderDate,
+      });
+      setMessage("已為員工建立隔日訂餐");
+      await loadAdminData(session.token, includeHistory, adminOrderFilters);
+    } catch (unknownError) {
+      handleHttpError(unknownError, "管理員代訂失敗");
     } finally {
       setLoading(false);
     }
@@ -578,6 +675,7 @@ export default function App() {
     setMenus([]);
     setSuppliers([]);
     setErrorEmails([]);
+    setAdminOrders([]);
     setMonthlyBillingLogs([]);
     setDeadlineMessage("");
     setMessage("已安全登出");
@@ -590,6 +688,9 @@ export default function App() {
       : "員工可登入後瀏覽下週工作日便當、修改訂單與查看個人訂餐記錄。";
 
   const selectedOrder = orders.find((entry) => entry.orderDate === orderForm.orderDate);
+  const availableAdminMenus = menus.filter(
+    (menu) => menu.validFrom <= adminOrderForm.orderDate && adminOrderForm.orderDate <= menu.validTo,
+  );
 
   return (
     <main className="min-h-screen px-4 py-6 text-ink sm:px-6 lg:px-10">
@@ -994,6 +1095,82 @@ export default function App() {
 
                   <section className="space-y-4">
                     <div>
+                      <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Admin Orders</p>
+                      <h3 className="mt-3 text-xl font-semibold">代替員工新增隔日訂餐</h3>
+                      <p className="mt-2 text-sm leading-7 text-ink/65">
+                        僅允許建立隔日便當，且必須在訂餐日前一日 17:00 前完成。
+                      </p>
+                    </div>
+                    <div className="grid gap-3">
+                      <select
+                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                        value={adminOrderForm.employeeId}
+                        onChange={(event) =>
+                          setAdminOrderForm((current) => ({
+                            ...current,
+                            employeeId: event.target.value,
+                          }))
+                        }
+                      >
+                        {employees.map((employee) => (
+                          <option key={employee.id} value={employee.id}>
+                            #{employee.id} {employee.name} {employee.isAdmin ? "(Admin)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                        type="date"
+                        value={adminOrderForm.orderDate}
+                        onChange={(event) =>
+                          setAdminOrderForm((current) => ({
+                            ...current,
+                            orderDate: event.target.value,
+                          }))
+                        }
+                      />
+                      <select
+                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                        value={adminOrderForm.menuId}
+                        onChange={(event) =>
+                          setAdminOrderForm((current) => ({
+                            ...current,
+                            menuId: event.target.value,
+                          }))
+                        }
+                      >
+                        {availableAdminMenus.map((menu) => (
+                          <option key={menu.id} value={menu.id}>
+                            {menu.name} / {menu.category} / NT${menu.price}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                      截止提醒：管理員代訂與 A003 供應商通知共用截止邊界，逾時後系統會拒絕送出。
+                    </div>
+                    <button
+                      className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => void submitAdminOrder()}
+                      type="button"
+                      disabled={
+                        loading ||
+                        !adminOrderForm.employeeId ||
+                        !adminOrderForm.menuId ||
+                        availableAdminMenus.length === 0
+                      }
+                    >
+                      為員工建立隔日訂單
+                    </button>
+                    {!availableAdminMenus.length ? (
+                      <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
+                        指定日期目前沒有可代訂的菜單，請先建立有效菜單。
+                      </div>
+                    ) : null}
+                  </section>
+
+                  <section className="space-y-4">
+                    <div>
                       <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Suppliers</p>
                       <h3 className="mt-3 text-xl font-semibold">新增供應商</h3>
                     </div>
@@ -1295,6 +1472,86 @@ export default function App() {
                 </div>
               </article>
             </div>
+
+            <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Admin Orders</p>
+                  <h3 className="mt-3 text-xl font-semibold">員工訂單總覽</h3>
+                </div>
+                <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                  {adminOrders.length} 筆
+                </span>
+              </div>
+
+              <div className="mt-6 grid gap-4 lg:grid-cols-[0.8fr_0.8fr_1.4fr]">
+                <input
+                  className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm outline-none transition focus:border-pine"
+                  type="date"
+                  value={adminOrderFilters.date}
+                  onChange={(event) =>
+                    setAdminOrderFilters((current) => ({
+                      ...current,
+                      date: event.target.value,
+                    }))
+                  }
+                />
+                <select
+                  className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm outline-none transition focus:border-pine"
+                  value={adminOrderFilters.employeeId}
+                  onChange={(event) =>
+                    setAdminOrderFilters((current) => ({
+                      ...current,
+                      employeeId: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">全部員工</option>
+                  {employees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      #{employee.id} {employee.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm text-ink/65">
+                  可依日期與員工過濾，列表會顯示供應商與建立者資訊。
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-4">
+                {adminOrders.length ? (
+                  adminOrders.map((order) => (
+                    <div
+                      key={order.id}
+                      className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-ink">
+                            {order.employeeName} / {order.menuName}
+                          </p>
+                          <p className="mt-1 text-sm text-ink/65">
+                            訂餐日期 {formatDate(order.orderDate)} / 供應商 {order.supplierName}
+                          </p>
+                          <p className="text-sm text-ink/55">價格 NT${order.menuPrice}</p>
+                        </div>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs text-ink/65">
+                          #{order.employeeId}
+                        </span>
+                      </div>
+                      <div className="mt-3 text-sm text-ink/60">
+                        <p>建立者 {order.createdByName ?? "員工自助"}</p>
+                        <p>建立時間 {formatDateTime(order.createdAt)}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
+                    目前查無符合條件的員工訂單
+                  </div>
+                )}
+              </div>
+            </article>
 
             <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
               <div className="flex flex-wrap items-center justify-between gap-4">

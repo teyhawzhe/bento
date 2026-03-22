@@ -1,10 +1,13 @@
 package com.lovius.bento.dao;
 
+import com.lovius.bento.model.AdminOrderView;
 import com.lovius.bento.model.BentoOrder;
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -69,6 +72,42 @@ public class JdbcOrderRepository implements OrderRepository {
     }
 
     @Override
+    public List<AdminOrderView> findAdminOrders(LocalDate orderDate, Long employeeId) {
+        StringBuilder sql = new StringBuilder(
+                """
+                SELECT ord.id,
+                       ord.employee_id,
+                       employee.name AS employee_name,
+                       ord.menu_id,
+                       menu.name AS menu_name,
+                       supplier.id AS supplier_id,
+                       supplier.name AS supplier_name,
+                       menu.price AS menu_price,
+                       ord.order_date,
+                       ord.created_by,
+                       creator.name AS created_by_name,
+                       ord.created_at
+                FROM orders ord
+                JOIN employees employee ON employee.id = ord.employee_id
+                JOIN menus menu ON menu.id = ord.menu_id
+                JOIN suppliers supplier ON supplier.id = menu.supplier_id
+                LEFT JOIN employees creator ON creator.id = ord.created_by
+                WHERE 1 = 1
+                """);
+        List<Object> parameters = new ArrayList<>();
+        if (orderDate != null) {
+            sql.append(" AND ord.order_date = ?");
+            parameters.add(orderDate);
+        }
+        if (employeeId != null) {
+            sql.append(" AND ord.employee_id = ?");
+            parameters.add(employeeId);
+        }
+        sql.append(" ORDER BY ord.order_date DESC, ord.created_at DESC, ord.id DESC");
+        return jdbcTemplate.query(sql.toString(), this::mapAdminRow, parameters.toArray());
+    }
+
+    @Override
     public void deleteById(Long id) {
         jdbcTemplate.update("DELETE FROM orders WHERE id = ?", id);
     }
@@ -85,7 +124,7 @@ public class JdbcOrderRepository implements OrderRepository {
             statement.setLong(1, order.getEmployeeId());
             statement.setLong(2, order.getMenuId());
             statement.setObject(3, order.getOrderDate());
-            statement.setLong(4, order.getCreatedBy());
+            statement.setObject(4, order.getCreatedBy());
             statement.setObject(5, order.getCreatedAt());
             return statement;
         }, keyHolder);
@@ -114,7 +153,24 @@ public class JdbcOrderRepository implements OrderRepository {
                 resultSet.getLong("employee_id"),
                 resultSet.getLong("menu_id"),
                 resultSet.getDate("order_date").toLocalDate(),
-                resultSet.getLong("created_by"),
+                resultSet.getObject("created_by", Long.class),
+                resultSet.getTimestamp("created_at").toInstant());
+    }
+
+    private AdminOrderView mapAdminRow(ResultSet resultSet, int rowNumber) throws SQLException {
+        BigDecimal price = resultSet.getBigDecimal("menu_price");
+        return new AdminOrderView(
+                resultSet.getLong("id"),
+                resultSet.getLong("employee_id"),
+                resultSet.getString("employee_name"),
+                resultSet.getLong("menu_id"),
+                resultSet.getString("menu_name"),
+                resultSet.getLong("supplier_id"),
+                resultSet.getString("supplier_name"),
+                price,
+                resultSet.getDate("order_date").toLocalDate(),
+                resultSet.getObject("created_by", Long.class),
+                resultSet.getString("created_by_name"),
                 resultSet.getTimestamp("created_at").toInstant());
     }
 }

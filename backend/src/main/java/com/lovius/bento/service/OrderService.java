@@ -2,10 +2,13 @@ package com.lovius.bento.service;
 
 import com.lovius.bento.dao.EmployeeRepository;
 import com.lovius.bento.dao.OrderRepository;
+import com.lovius.bento.dto.AdminOrderResponse;
+import com.lovius.bento.dto.CreateAdminOrderRequest;
 import com.lovius.bento.dto.CreateOrderRequest;
 import com.lovius.bento.dto.OrderResponse;
 import com.lovius.bento.dto.UpdateOrderRequest;
 import com.lovius.bento.exception.ApiException;
+import com.lovius.bento.model.AdminOrderView;
 import com.lovius.bento.model.BentoOrder;
 import com.lovius.bento.model.Employee;
 import com.lovius.bento.model.Menu;
@@ -102,6 +105,33 @@ public class OrderService {
                 .toList();
     }
 
+    public List<AdminOrderResponse> getAdminOrders(LocalDate orderDate, Long employeeId) {
+        return orderRepository.findAdminOrders(orderDate, employeeId)
+                .stream()
+                .map(this::toAdminResponse)
+                .toList();
+    }
+
+    public OrderResponse createOrderByAdmin(AuthenticatedUser admin, CreateAdminOrderRequest request) {
+        getRequiredEmployee(request.employeeId());
+        orderDeadlineService.ensureAdminOrderDateIsTomorrow(request.orderDate());
+        orderDeadlineService.ensureAdminOrderCreationWindowOpen(request.orderDate());
+        Menu menu = validateMenuForDate(request.menuId(), request.orderDate());
+        if (orderRepository.findByEmployeeIdAndOrderDate(request.employeeId(), request.orderDate()).isPresent()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "該員工於指定日期已有訂單");
+        }
+
+        BentoOrder order = new BentoOrder(
+                null,
+                request.employeeId(),
+                menu.getId(),
+                request.orderDate(),
+                admin.employeeId(),
+                Instant.now());
+        orderRepository.save(order);
+        return toResponse(order);
+    }
+
     private void validateOrderDate(LocalDate orderDate) {
         if (!orderDeadlineService.isOrderDateWithinNextWeekdays(orderDate)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "僅可訂購下週工作日便當");
@@ -122,9 +152,13 @@ public class OrderService {
         }
     }
 
-    private OrderResponse toResponse(BentoOrder order) {
-        Employee employee = employeeRepository.findById(order.getEmployeeId())
+    private Employee getRequiredEmployee(Long employeeId) {
+        return employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "查無員工"));
+    }
+
+    private OrderResponse toResponse(BentoOrder order) {
+        Employee employee = getRequiredEmployee(order.getEmployeeId());
         Menu menu = menuService.getRequiredMenu(order.getMenuId());
         return new OrderResponse(
                 order.getId(),
@@ -135,5 +169,21 @@ public class OrderService {
                 order.getOrderDate(),
                 order.getCreatedBy(),
                 order.getCreatedAt());
+    }
+
+    private AdminOrderResponse toAdminResponse(AdminOrderView order) {
+        return new AdminOrderResponse(
+                order.id(),
+                order.employeeId(),
+                order.employeeName(),
+                order.menuId(),
+                order.menuName(),
+                order.supplierId(),
+                order.supplierName(),
+                order.menuPrice(),
+                order.orderDate(),
+                order.createdBy(),
+                order.createdByName(),
+                order.createdAt());
     }
 }

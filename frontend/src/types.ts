@@ -124,6 +124,21 @@ export interface Order {
   menuId: number;
   menuName: string;
   orderDate: string;
-  createdBy: number;
+  createdBy: number | null;
+  createdAt: string;
+}
+
+export interface AdminOrder {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  menuId: number;
+  menuName: string;
+  supplierId: number;
+  supplierName: string;
+  menuPrice: number;
+  orderDate: string;
+  createdBy: number | null;
+  createdByName: string | null;
   createdAt: string;
 }
