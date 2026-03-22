@@ -21,6 +21,8 @@ import com.lovius.bento.security.AuthenticatedUser;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -181,6 +183,29 @@ class OrderServiceTest {
 
         assertEquals("該員工於指定日期已有訂單", exception.getMessage());
         verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    void getAdminOrdersDefaultsToTodayWhenDatesMissing() {
+        when(orderRepository.findAdminOrders(any(), any(), any())).thenReturn(List.of());
+
+        orderService.getAdminOrders(null, null, null);
+
+        ArgumentCaptor<LocalDate> dateFromCaptor = ArgumentCaptor.forClass(LocalDate.class);
+        ArgumentCaptor<LocalDate> dateToCaptor = ArgumentCaptor.forClass(LocalDate.class);
+        verify(orderRepository).findAdminOrders(dateFromCaptor.capture(), dateToCaptor.capture(), org.mockito.ArgumentMatchers.isNull());
+        assertEquals(LocalDate.now(ZoneId.of("Asia/Taipei")), dateFromCaptor.getValue());
+        assertEquals(dateFromCaptor.getValue(), dateToCaptor.getValue());
+    }
+
+    @Test
+    void getAdminOrdersRejectsInvertedDateRange() {
+        ApiException exception = assertThrows(
+                ApiException.class,
+                () -> orderService.getAdminOrders(LocalDate.of(2026, 4, 3), LocalDate.of(2026, 4, 1), null));
+
+        assertEquals("查詢起日不可晚於迄日", exception.getMessage());
+        verify(orderRepository, never()).findAdminOrders(any(), any(), any());
     }
 
     private Menu menu(Long id, LocalDate validFrom, LocalDate validTo) {

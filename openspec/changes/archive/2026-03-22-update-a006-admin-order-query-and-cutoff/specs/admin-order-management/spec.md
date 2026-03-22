@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: 管理員可以取消指定員工的訂餐
 系統 SHALL 允許已驗證的管理員取消指定員工的訂餐記錄。當前時間 MUST 早於該訂餐日前一日 16:30，亦即 A003 每日供應商訂單通知批次執行前 30 分鐘；超過此時間後，系統 MUST 拒絕取消請求。

@@ -160,7 +160,8 @@ export function cancelOrder(token: string, orderId: number) {
 export function getAdminOrders(
   token: string,
   params: Partial<{
-    date: string;
+    date_from: string;
+    date_to: string;
     employee_id: number;
   }>,
 ) {

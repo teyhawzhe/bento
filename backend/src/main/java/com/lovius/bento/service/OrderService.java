@@ -15,12 +15,14 @@ import com.lovius.bento.model.Menu;
 import com.lovius.bento.security.AuthenticatedUser;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
 public class OrderService {
+    private static final ZoneId ZONE_ID = ZoneId.of("Asia/Taipei");
     private final OrderRepository orderRepository;
     private final EmployeeRepository employeeRepository;
     private final MenuService menuService;
@@ -104,8 +106,13 @@ public class OrderService {
                 .toList();
     }
 
-    public List<AdminOrderResponse> getAdminOrders(LocalDate orderDate, Long employeeId) {
-        return orderRepository.findAdminOrders(orderDate, employeeId)
+    public List<AdminOrderResponse> getAdminOrders(LocalDate dateFrom, LocalDate dateTo, Long employeeId) {
+        LocalDate resolvedDateFrom = dateFrom == null ? LocalDate.now(ZONE_ID) : dateFrom;
+        LocalDate resolvedDateTo = dateTo == null ? resolvedDateFrom : dateTo;
+        if (resolvedDateFrom.isAfter(resolvedDateTo)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "查詢起日不可晚於迄日");
+        }
+        return orderRepository.findAdminOrders(resolvedDateFrom, resolvedDateTo, employeeId)
                 .stream()
                 .map(this::toAdminResponse)
                 .toList();

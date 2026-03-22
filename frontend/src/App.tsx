@@ -155,6 +155,10 @@ function tomorrowDate() {
   return toDateInputValue(tomorrow);
 }
 
+function todayDate() {
+  return toDateInputValue(new Date());
+}
+
 function nextWeekdays() {
   const days: string[] = [];
   const now = new Date();
@@ -363,7 +367,8 @@ export default function App() {
   });
   const [editingMenus, setEditingMenus] = useState<Record<number, Partial<Menu>>>({});
   const [adminOrderFilters, setAdminOrderFilters] = useState({
-    date: tomorrowDate(),
+    dateFrom: todayDate(),
+    dateTo: todayDate(),
     employeeId: "",
   });
   const [adminOrderForm, setAdminOrderForm] = useState({
@@ -617,7 +622,7 @@ export default function App() {
   async function loadAdminData(
     token: string,
     history: boolean,
-    filters: { date: string; employeeId: string },
+    filters: { dateFrom: string; dateTo: string; employeeId: string },
     supplierQuery: { name: string; searchType: "exact" | "fuzzy" },
   ) {
     try {
@@ -636,7 +641,8 @@ export default function App() {
         getReportEmails(token),
         getMonthlyBillingLogs(token),
         getAdminOrders(token, {
-          date: filters.date || undefined,
+          date_from: filters.dateFrom || undefined,
+          date_to: filters.dateTo || undefined,
           employee_id: filters.employeeId ? Number(filters.employeeId) : undefined,
         }),
         getSuppliers(token, {
@@ -1671,7 +1677,7 @@ export default function App() {
                           </select>
                         </div>
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                          截止提醒：管理員代訂與 A003 供應商通知共用截止邊界，逾時後系統會拒絕送出。
+                          截止提醒：僅可在當日 16:30 前代訂隔日便當，系統會保留 A003 17:00 供應商通知前的 30 分鐘緩衝。
                         </div>
                         <button
                           className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -1704,13 +1710,21 @@ export default function App() {
                           {adminOrders.length} 筆
                         </span>
                       </div>
-                      <div className="mt-6 grid gap-4 lg:grid-cols-[0.8fr_0.8fr_1.4fr]">
+                      <div className="mt-6 grid gap-4 lg:grid-cols-3">
                         <input
                           className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm outline-none transition focus:border-pine"
                           type="date"
-                          value={adminOrderFilters.date}
+                          value={adminOrderFilters.dateFrom}
                           onChange={(event) =>
-                            setAdminOrderFilters((current) => ({ ...current, date: event.target.value }))
+                            setAdminOrderFilters((current) => ({ ...current, dateFrom: event.target.value }))
+                          }
+                        />
+                        <input
+                          className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm outline-none transition focus:border-pine"
+                          type="date"
+                          value={adminOrderFilters.dateTo}
+                          onChange={(event) =>
+                            setAdminOrderFilters((current) => ({ ...current, dateTo: event.target.value }))
                           }
                         />
                         <select
@@ -1730,9 +1744,6 @@ export default function App() {
                             </option>
                           ))}
                         </select>
-                        <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm text-ink/65">
-                          可依日期與員工過濾，列表會顯示供應商與建立者資訊。
-                        </div>
                       </div>
                       <div className="mt-6 grid gap-4">
                         {adminOrders.length ? (

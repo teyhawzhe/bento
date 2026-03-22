@@ -118,8 +118,15 @@ class OrderDeadlineServiceTest {
     }
 
     @Test
-    void adminOrderCreationWindowClosedAtPreviousDayFivePm() {
-        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T17:00:00+08:00"));
+    void adminOrderCreationWindowOpenBeforePreviousDayFourThirtyPm() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T16:29:00+08:00"));
+
+        assertDoesNotThrow(() -> service.ensureAdminOrderCreationWindowOpen(LocalDate.of(2026, 4, 1)));
+    }
+
+    @Test
+    void adminOrderCreationWindowClosedAtPreviousDayFourThirtyPm() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T16:30:00+08:00"));
 
         ApiException exception = assertThrows(
                 ApiException.class,

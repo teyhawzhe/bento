@@ -72,7 +72,7 @@ public class JdbcOrderRepository implements OrderRepository {
     }
 
     @Override
-    public List<AdminOrderView> findAdminOrders(LocalDate orderDate, Long employeeId) {
+    public List<AdminOrderView> findAdminOrders(LocalDate dateFrom, LocalDate dateTo, Long employeeId) {
         StringBuilder sql = new StringBuilder(
                 """
                 SELECT ord.id,
@@ -95,9 +95,13 @@ public class JdbcOrderRepository implements OrderRepository {
                 WHERE 1 = 1
                 """);
         List<Object> parameters = new ArrayList<>();
-        if (orderDate != null) {
-            sql.append(" AND ord.order_date = ?");
-            parameters.add(orderDate);
+        if (dateFrom != null) {
+            sql.append(" AND ord.order_date >= ?");
+            parameters.add(dateFrom);
+        }
+        if (dateTo != null) {
+            sql.append(" AND ord.order_date <= ?");
+            parameters.add(dateTo);
         }
         if (employeeId != null) {
             sql.append(" AND ord.employee_id = ?");

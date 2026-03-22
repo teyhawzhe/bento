@@ -81,7 +81,7 @@ class A002ControllerTest {
     void getAdminOrdersSupportsFilters() throws Exception {
         Mockito.when(tokenService.parseToken("Bearer admin-token"))
                 .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
-        Mockito.when(orderService.getAdminOrders(LocalDate.of(2026, 4, 1), 2L))
+        Mockito.when(orderService.getAdminOrders(LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 3), 2L))
                 .thenReturn(List.of(new AdminOrderResponse(
                         8L,
                         2L,
@@ -98,7 +98,8 @@ class A002ControllerTest {
 
         mockMvc.perform(MockMvcRequestBuilders.get("/api/admin/orders")
                         .header("Authorization", "Bearer admin-token")
-                        .param("date", "2026-04-01")
+                        .param("date_from", "2026-04-01")
+                        .param("date_to", "2026-04-03")
                         .param("employee_id", "2"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$[0].employeeName").value("Alice Chen"))

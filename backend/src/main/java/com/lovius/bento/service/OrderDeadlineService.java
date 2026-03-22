@@ -61,7 +61,11 @@ public class OrderDeadlineService {
     }
 
     public void ensureAdminOrderCreationWindowOpen(LocalDate orderDate) {
-        ensureAdminWindowOpen(orderDate, "已超過代訂截止時間");
+        ZonedDateTime now = now();
+        ZonedDateTime cutoff = ZonedDateTime.of(orderDate.minusDays(1), LocalTime.of(16, 30), ZONE_ID);
+        if (!now.isBefore(cutoff)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "已超過代訂截止時間");
+        }
     }
 
     public ZonedDateTime employeeOrderDeadline() {
@@ -89,15 +93,6 @@ public class OrderDeadlineService {
     private void ensureCancellationWindowOpen(LocalDate orderDate, String message) {
         ZonedDateTime now = now();
         LocalDateTime cutoffDateTime = LocalDateTime.of(orderDate.minusDays(1), LocalTime.of(16, 30));
-        ZonedDateTime cutoff = ZonedDateTime.of(cutoffDateTime, ZONE_ID);
-        if (!now.isBefore(cutoff)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, message);
-        }
-    }
-
-    private void ensureAdminWindowOpen(LocalDate orderDate, String message) {
-        ZonedDateTime now = now();
-        LocalDateTime cutoffDateTime = LocalDateTime.of(orderDate.minusDays(1), LocalTime.of(17, 0));
         ZonedDateTime cutoff = ZonedDateTime.of(cutoffDateTime, ZONE_ID);
         if (!now.isBefore(cutoff)) {
             throw new ApiException(HttpStatus.FORBIDDEN, message);

@@ -170,10 +170,11 @@ public class A002Controller {
     @GetMapping("/admin/orders")
     public List<AdminOrderResponse> getOrdersByAdmin(
             @RequestHeader("Authorization") String authorizationHeader,
-            @RequestParam(name = "date", required = false) LocalDate orderDate,
+            @RequestParam(name = "date_from", required = false) LocalDate dateFrom,
+            @RequestParam(name = "date_to", required = false) LocalDate dateTo,
             @RequestParam(name = "employee_id", required = false) Long employeeId) {
         requireRole(authorizationHeader, "admin");
-        return orderService.getAdminOrders(orderDate, employeeId);
+        return orderService.getAdminOrders(dateFrom, dateTo, employeeId);
     }
 
     @PostMapping("/admin/orders")

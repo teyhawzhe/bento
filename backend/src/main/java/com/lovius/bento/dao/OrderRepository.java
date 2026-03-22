@@ -11,6 +11,6 @@ public interface OrderRepository {
     Optional<BentoOrder> findById(Long id);
     Optional<BentoOrder> findByEmployeeIdAndOrderDate(Long employeeId, LocalDate orderDate);
     List<BentoOrder> findByEmployeeId(Long employeeId);
-    List<AdminOrderView> findAdminOrders(LocalDate orderDate, Long employeeId);
+    List<AdminOrderView> findAdminOrders(LocalDate dateFrom, LocalDate dateTo, Long employeeId);
     void deleteById(Long id);
 }
