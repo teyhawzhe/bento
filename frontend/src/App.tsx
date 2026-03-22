@@ -18,11 +18,14 @@ import {
   getMenus,
   getMonthlyBillingLogs,
   getMyOrders,
+  getSupplier,
+  getSuppliers,
   importEmployees,
   login,
   logout as logoutRequest,
   resetEmployeePassword,
   triggerMonthlyBilling,
+  updateSupplier,
   updateEmployeeStatus,
   updateMenu,
   updateOrder,
@@ -175,6 +178,20 @@ export default function App() {
     orderDate: tomorrowDate(),
     menuId: "",
   });
+  const [supplierFilters, setSupplierFilters] = useState({
+    name: "",
+    searchType: "exact" as "exact" | "fuzzy",
+  });
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  const [supplierDetailForm, setSupplierDetailForm] = useState({
+    id: "",
+    name: "",
+    email: "",
+    phone: "",
+    contactPerson: "",
+    businessRegistrationNo: "",
+    isActive: true,
+  });
 
   useEffect(() => {
     if (!session || session.role !== role) {
@@ -186,8 +203,8 @@ export default function App() {
       return;
     }
 
-    void loadAdminData(session.token, includeHistory, adminOrderFilters);
-  }, [adminOrderFilters, includeHistory, role, session]);
+    void loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+  }, [adminOrderFilters, includeHistory, role, session, supplierFilters]);
 
   useEffect(() => {
     if (role !== "admin" || !session) {
@@ -256,6 +273,7 @@ export default function App() {
     token: string,
     history: boolean,
     filters: { date: string; employeeId: string },
+    supplierQuery: { name: string; searchType: "exact" | "fuzzy" },
   ) {
     try {
       const [
@@ -264,6 +282,7 @@ export default function App() {
         errorEmailsResponse,
         monthlyBillingLogsResponse,
         adminOrdersResponse,
+        suppliersResponse,
       ] = await Promise.all([
         getEmployees(token),
         getMenus(token, history),
@@ -273,12 +292,17 @@ export default function App() {
           date: filters.date || undefined,
           employee_id: filters.employeeId ? Number(filters.employeeId) : undefined,
         }),
+        getSuppliers(token, {
+          name: supplierQuery.name || undefined,
+          search_type: supplierQuery.searchType,
+        }),
       ]);
       setEmployees(employeesResponse.data);
       setMenus(menusResponse.data);
       setErrorEmails(errorEmailsResponse.data);
       setMonthlyBillingLogs(monthlyBillingLogsResponse.data);
       setAdminOrders(adminOrdersResponse.data);
+      setSuppliers(suppliersResponse.data);
     } catch (unknownError) {
       handleHttpError(unknownError, "管理資料讀取失敗");
     }
@@ -305,7 +329,7 @@ export default function App() {
       if (role === "employee") {
         await loadEmployeeData(nextSession.token);
       } else {
-        await loadAdminData(nextSession.token, includeHistory, adminOrderFilters);
+        await loadAdminData(nextSession.token, includeHistory, adminOrderFilters, supplierFilters);
       }
     } catch (unknownError) {
       handleHttpError(unknownError, "登入失敗");
@@ -365,7 +389,7 @@ export default function App() {
       setCreateResult(response.data);
       setCreateForm({ username: "", name: "", email: "" });
       setMessage(response.data.message);
-      await loadAdminData(session.token, includeHistory, adminOrderFilters);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "新增員工失敗");
     } finally {
@@ -385,7 +409,7 @@ export default function App() {
       const response = await importEmployees(session.token, selectedFile);
       setImportResult(response.data);
       setMessage(response.data.message);
-      await loadAdminData(session.token, includeHistory, adminOrderFilters);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "CSV 匯入失敗");
     } finally {
@@ -402,7 +426,7 @@ export default function App() {
     try {
       await updateEmployeeStatus(session.token, employee.id, !employee.isActive);
       setMessage(employee.isActive ? "員工已停用" : "員工已啟用");
-      await loadAdminData(session.token, includeHistory, adminOrderFilters);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "更新狀態失敗");
     } finally {
@@ -421,7 +445,7 @@ export default function App() {
       await resetEmployeePassword(session.token, employeeId, nextPassword);
       setMessage("密碼已重設，系統已送出通知");
       setResetForms((current) => ({ ...current, [employeeId]: "" }));
-      await loadAdminData(session.token, includeHistory, adminOrderFilters);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "重設密碼失敗");
     } finally {
@@ -486,7 +510,6 @@ export default function App() {
     setMessage("");
     try {
       const response = await createSupplier(session.token, supplierForm);
-      setSuppliers((current) => [response.data, ...current]);
       setSupplierForm({
         name: "",
         email: "",
@@ -499,8 +522,78 @@ export default function App() {
         supplierId: String(response.data.id),
       }));
       setMessage(`供應商已建立，ID: ${response.data.id}`);
+      setSelectedSupplier(response.data);
+      setSupplierDetailForm({
+        id: String(response.data.id),
+        name: response.data.name,
+        email: response.data.email,
+        phone: response.data.phone,
+        contactPerson: response.data.contactPerson,
+        businessRegistrationNo: response.data.businessRegistrationNo,
+        isActive: response.data.isActive,
+      });
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "新增供應商失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadSupplierDetail(supplierId: number) {
+    if (!session) {
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const response = await getSupplier(session.token, supplierId);
+      setSelectedSupplier(response.data);
+      setSupplierDetailForm({
+        id: String(response.data.id),
+        name: response.data.name,
+        email: response.data.email,
+        phone: response.data.phone,
+        contactPerson: response.data.contactPerson,
+        businessRegistrationNo: response.data.businessRegistrationNo,
+        isActive: response.data.isActive,
+      });
+    } catch (unknownError) {
+      handleHttpError(unknownError, "供應商詳細資料讀取失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitUpdateSupplier() {
+    if (!session || !selectedSupplier) {
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await updateSupplier(session.token, selectedSupplier.id, {
+        name: supplierDetailForm.name,
+        email: supplierDetailForm.email,
+        phone: supplierDetailForm.phone,
+        contactPerson: supplierDetailForm.contactPerson,
+        isActive: supplierDetailForm.isActive,
+      });
+      setSelectedSupplier(response.data);
+      setSupplierDetailForm({
+        id: String(response.data.id),
+        name: response.data.name,
+        email: response.data.email,
+        phone: response.data.phone,
+        contactPerson: response.data.contactPerson,
+        businessRegistrationNo: response.data.businessRegistrationNo,
+        isActive: response.data.isActive,
+      });
+      setMessage("供應商資料已更新");
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+    } catch (unknownError) {
+      handleHttpError(unknownError, "更新供應商失敗");
     } finally {
       setLoading(false);
     }
@@ -557,7 +650,7 @@ export default function App() {
           response.data.billingPeriodEnd,
         )}，共 ${response.data.supplierCount} 家供應商 / ${response.data.recipientCount} 位收件者`,
       );
-      await loadAdminData(session.token, includeHistory, adminOrderFilters);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "手動觸發月結報表失敗");
     } finally {
@@ -592,7 +685,7 @@ export default function App() {
         validFrom: nextWeekdays()[0] ?? "",
         validTo: nextWeekdays()[4] ?? "",
       });
-      await loadAdminData(session.token, includeHistory, adminOrderFilters);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "建立菜單失敗");
     } finally {
@@ -627,7 +720,7 @@ export default function App() {
         delete next[menuId];
         return next;
       });
-      await loadAdminData(session.token, includeHistory, adminOrderFilters);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "更新菜單失敗");
     } finally {
@@ -649,7 +742,7 @@ export default function App() {
         orderDate: adminOrderForm.orderDate,
       });
       setMessage("已為員工建立隔日訂餐");
-      await loadAdminData(session.token, includeHistory, adminOrderFilters);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "管理員代訂失敗");
     } finally {
@@ -677,6 +770,7 @@ export default function App() {
     setErrorEmails([]);
     setAdminOrders([]);
     setMonthlyBillingLogs([]);
+    setSelectedSupplier(null);
     setDeadlineMessage("");
     setMessage("已安全登出");
     setError("");
@@ -1172,7 +1266,36 @@ export default function App() {
                   <section className="space-y-4">
                     <div>
                       <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Suppliers</p>
-                      <h3 className="mt-3 text-xl font-semibold">新增供應商</h3>
+                      <h3 className="mt-3 text-xl font-semibold">供應商管理</h3>
+                      <p className="mt-2 text-sm leading-7 text-ink/65">
+                        可先依名稱搜尋供應商，再載入單筆明細進行編輯；下方仍保留新增供應商入口。
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-[1fr_140px_auto]">
+                      <input
+                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                        placeholder="輸入供應商名稱"
+                        value={supplierFilters.name}
+                        onChange={(event) =>
+                          setSupplierFilters((current) => ({ ...current, name: event.target.value }))
+                        }
+                      />
+                      <select
+                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                        value={supplierFilters.searchType}
+                        onChange={(event) =>
+                          setSupplierFilters((current) => ({
+                            ...current,
+                            searchType: event.target.value as "exact" | "fuzzy",
+                          }))
+                        }
+                      >
+                        <option value="exact">精確查詢</option>
+                        <option value="fuzzy">模糊查詢</option>
+                      </select>
+                      <div className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm text-ink/65">
+                        共 {suppliers.length} 筆
+                      </div>
                     </div>
                     <div className="grid gap-3">
                       <input
@@ -1230,11 +1353,41 @@ export default function App() {
                     >
                       建立供應商
                     </button>
-                    {suppliers.length ? (
-                      <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/75">
-                        最新建立供應商 ID: {suppliers[0].id} / {suppliers[0].name}
-                      </div>
-                    ) : null}
+                    <div className="grid gap-3">
+                      {suppliers.length ? (
+                        suppliers.map((supplier) => (
+                          <button
+                            key={supplier.id}
+                            className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-left transition hover:border-pine"
+                            onClick={() => void loadSupplierDetail(supplier.id)}
+                            type="button"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-medium text-ink">{supplier.name}</p>
+                                <p className="mt-1 text-sm text-ink/65">{supplier.email}</p>
+                                <p className="text-xs text-ink/45">
+                                  #{supplier.id} / {supplier.contactPerson}
+                                </p>
+                              </div>
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs ${
+                                  supplier.isActive
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-zinc-200 text-zinc-700"
+                                }`}
+                              >
+                                {supplier.isActive ? "啟用中" : "已停用"}
+                              </span>
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
+                          目前查無符合條件的供應商
+                        </div>
+                      )}
+                    </div>
                   </section>
 
                   <section className="space-y-4">
@@ -1551,6 +1704,104 @@ export default function App() {
                   </div>
                 )}
               </div>
+            </article>
+
+            <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Supplier Detail</p>
+                  <h3 className="mt-3 text-xl font-semibold">供應商詳細資料與編輯</h3>
+                </div>
+                <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                  {selectedSupplier ? `#${selectedSupplier.id}` : "未選取"}
+                </span>
+              </div>
+
+              {selectedSupplier ? (
+                <div className="mt-6 grid gap-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-2 text-sm text-ink/70">
+                      供應商 ID
+                      <input
+                        className="rounded-2xl border border-ink/10 bg-[#f3efe7] px-4 py-3 text-sm text-ink/60"
+                        value={supplierDetailForm.id}
+                        disabled
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm text-ink/70">
+                      營業登記編號
+                      <input
+                        className="rounded-2xl border border-ink/10 bg-[#f3efe7] px-4 py-3 text-sm text-ink/60"
+                        value={supplierDetailForm.businessRegistrationNo}
+                        disabled
+                      />
+                    </label>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                      value={supplierDetailForm.name}
+                      onChange={(event) =>
+                        setSupplierDetailForm((current) => ({ ...current, name: event.target.value }))
+                      }
+                    />
+                    <input
+                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                      value={supplierDetailForm.email}
+                      onChange={(event) =>
+                        setSupplierDetailForm((current) => ({ ...current, email: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                      value={supplierDetailForm.phone}
+                      onChange={(event) =>
+                        setSupplierDetailForm((current) => ({ ...current, phone: event.target.value }))
+                      }
+                    />
+                    <input
+                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                      value={supplierDetailForm.contactPerson}
+                      onChange={(event) =>
+                        setSupplierDetailForm((current) => ({
+                          ...current,
+                          contactPerson: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <label className="flex items-center gap-3 text-sm text-ink/70">
+                    <input
+                      checked={supplierDetailForm.isActive}
+                      onChange={(event) =>
+                        setSupplierDetailForm((current) => ({
+                          ...current,
+                          isActive: event.target.checked,
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    供應商啟用中
+                  </label>
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                    唯讀欄位：`id` 與 `business_registration_no` 僅供顯示，不可修改。
+                  </div>
+                  <button
+                    className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => void submitUpdateSupplier()}
+                    type="button"
+                    disabled={loading}
+                  >
+                    更新供應商資料
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-6 rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
+                  請先從左側供應商清單選取一筆資料以載入詳細內容。
+                </div>
+              )}
             </article>
 
             <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">

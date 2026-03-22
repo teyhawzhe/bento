@@ -21,6 +21,13 @@ public class JdbcSupplierRepository implements SupplierRepository {
 
     @Override
     public Supplier save(Supplier supplier) {
+        if (supplier.getId() != null) {
+            return update(supplier);
+        }
+        return insert(supplier);
+    }
+
+    private Supplier insert(Supplier supplier) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             var statement = connection.prepareStatement(
@@ -66,6 +73,48 @@ public class JdbcSupplierRepository implements SupplierRepository {
                 ORDER BY id
                 """,
                 this::mapRow);
+    }
+
+    @Override
+    public List<Supplier> findByNameExact(String name) {
+        return jdbcTemplate.query(
+                """
+                SELECT id, name, email, phone, contact_person, business_registration_no, is_active, created_at
+                FROM suppliers
+                WHERE LOWER(name) = LOWER(?)
+                ORDER BY id
+                """,
+                this::mapRow,
+                name);
+    }
+
+    @Override
+    public List<Supplier> findByNameFuzzy(String keyword) {
+        return jdbcTemplate.query(
+                """
+                SELECT id, name, email, phone, contact_person, business_registration_no, is_active, created_at
+                FROM suppliers
+                WHERE LOWER(name) LIKE LOWER(?)
+                ORDER BY id
+                """,
+                this::mapRow,
+                "%" + keyword + "%");
+    }
+
+    private Supplier update(Supplier supplier) {
+        jdbcTemplate.update(
+                """
+                UPDATE suppliers
+                SET name = ?, email = ?, phone = ?, contact_person = ?, is_active = ?
+                WHERE id = ?
+                """,
+                supplier.getName(),
+                supplier.getEmail(),
+                supplier.getPhone(),
+                supplier.getContactPerson(),
+                supplier.isActive(),
+                supplier.getId());
+        return supplier;
     }
 
     private Supplier mapRow(ResultSet resultSet, int rowNumber) throws SQLException {

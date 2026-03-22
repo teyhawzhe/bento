@@ -239,6 +239,47 @@ export function createSupplier(
   });
 }
 
+export function getSuppliers(
+  token: string,
+  params: Partial<{
+    name: string;
+    search_type: "exact" | "fuzzy";
+  }>,
+) {
+  return api.get<Supplier[]>("/suppliers", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    params,
+  });
+}
+
+export function getSupplier(token: string, supplierId: number) {
+  return api.get<Supplier>(`/suppliers/${supplierId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function updateSupplier(
+  token: string,
+  supplierId: number,
+  payload: {
+    name: string;
+    email: string;
+    phone: string;
+    contactPerson: string;
+    isActive: boolean;
+  },
+) {
+  return api.patch<Supplier>(`/suppliers/${supplierId}`, payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export function getErrorEmails(token: string) {
   return api.get<ErrorEmail[]>("/settings/error-emails", {
     headers: {

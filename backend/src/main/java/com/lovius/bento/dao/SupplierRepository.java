@@ -8,4 +8,6 @@ public interface SupplierRepository {
     Supplier save(Supplier supplier);
     Optional<Supplier> findById(Long id);
     List<Supplier> findAll();
+    List<Supplier> findByNameExact(String name);
+    List<Supplier> findByNameFuzzy(String keyword);
 }

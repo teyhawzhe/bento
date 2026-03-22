@@ -3,6 +3,7 @@ package com.lovius.bento.controller;
 import com.lovius.bento.dto.AdminOrderResponse;
 import com.lovius.bento.dto.CreateAdminOrderRequest;
 import com.lovius.bento.dto.OrderResponse;
+import com.lovius.bento.dto.SupplierResponse;
 import com.lovius.bento.exception.GlobalExceptionHandler;
 import com.lovius.bento.security.AuthenticatedUser;
 import com.lovius.bento.service.MenuService;
@@ -114,5 +115,112 @@ class A002ControllerTest {
                 .andExpect(MockMvcResultMatchers.status().isCreated())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.employeeId").value(2))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.createdBy").value(1));
+    }
+
+    @Test
+    void getSuppliersRequiresAdmin() throws Exception {
+        Mockito.when(tokenService.parseToken("Bearer employee-token"))
+                .thenReturn(new AuthenticatedUser(2L, "alice", "employee"));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/suppliers")
+                        .header("Authorization", "Bearer employee-token"))
+                .andExpect(MockMvcResultMatchers.status().isForbidden())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("權限不足"));
+    }
+
+    @Test
+    void getSuppliersSupportsSearchParams() throws Exception {
+        Mockito.when(tokenService.parseToken("Bearer admin-token"))
+                .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
+        Mockito.when(supplierService.getSuppliers("好食", "fuzzy")).thenReturn(List.of(
+                new SupplierResponse(
+                        5L,
+                        "好食便當",
+                        "orders@haoshi.local",
+                        "02-1234-5678",
+                        "王小明",
+                        "12345678",
+                        true,
+                        Instant.parse("2026-03-20T10:00:00Z"))));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/suppliers")
+                        .header("Authorization", "Bearer admin-token")
+                        .param("name", "好食")
+                        .param("search_type", "fuzzy"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$[0].name").value("好食便當"));
+    }
+
+    @Test
+    void getSingleSupplierDelegatesToService() throws Exception {
+        Mockito.when(tokenService.parseToken("Bearer admin-token"))
+                .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
+        Mockito.when(supplierService.getSupplier(5L)).thenReturn(new SupplierResponse(
+                5L,
+                "好食便當",
+                "orders@haoshi.local",
+                "02-1234-5678",
+                "王小明",
+                "12345678",
+                true,
+                Instant.parse("2026-03-20T10:00:00Z")));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/suppliers/5")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.businessRegistrationNo").value("12345678"));
+    }
+
+    @Test
+    void patchSupplierRejectsReadonlyFields() throws Exception {
+        Mockito.when(tokenService.parseToken("Bearer admin-token"))
+                .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
+
+        mockMvc.perform(MockMvcRequestBuilders.patch("/api/suppliers/5")
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "新供應商名稱",
+                                  "email": "vendor@company.local",
+                                  "phone": "02-8888-0000",
+                                  "contactPerson": "聯絡人",
+                                  "isActive": true,
+                                  "businessRegistrationNo": "99999999"
+                                }
+                                """))
+                .andExpect(MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("營業登記編號不可修改"));
+    }
+
+    @Test
+    void patchSupplierDelegatesToService() throws Exception {
+        Mockito.when(tokenService.parseToken("Bearer admin-token"))
+                .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
+        Mockito.when(supplierService.updateSupplier(Mockito.eq(5L), Mockito.any())).thenReturn(new SupplierResponse(
+                5L,
+                "新供應商名稱",
+                "vendor@company.local",
+                "02-8888-0000",
+                "聯絡人",
+                "12345678",
+                false,
+                Instant.parse("2026-03-20T10:00:00Z")));
+
+        mockMvc.perform(MockMvcRequestBuilders.patch("/api/suppliers/5")
+                        .header("Authorization", "Bearer admin-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "新供應商名稱",
+                                  "email": "vendor@company.local",
+                                  "phone": "02-8888-0000",
+                                  "contactPerson": "聯絡人",
+                                  "isActive": false
+                                }
+                                """))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.name").value("新供應商名稱"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.isActive").value(false));
     }
 }

@@ -10,6 +10,7 @@ import com.lovius.bento.dto.EmployeeMenuOptionResponse;
 import com.lovius.bento.dto.MenuResponse;
 import com.lovius.bento.dto.OrderResponse;
 import com.lovius.bento.dto.SupplierResponse;
+import com.lovius.bento.dto.UpdateSupplierRequest;
 import com.lovius.bento.dto.UpdateMenuRequest;
 import com.lovius.bento.dto.UpdateOrderRequest;
 import com.lovius.bento.exception.ApiException;
@@ -138,6 +139,32 @@ public class A002Controller {
         requireRole(authorizationHeader, "admin");
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(supplierService.createSupplier(request));
+    }
+
+    @GetMapping("/suppliers")
+    public List<SupplierResponse> getSuppliers(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestParam(name = "name", required = false) String name,
+            @RequestParam(name = "search_type", required = false) String searchType) {
+        requireRole(authorizationHeader, "admin");
+        return supplierService.getSuppliers(name, searchType);
+    }
+
+    @GetMapping("/suppliers/{id}")
+    public SupplierResponse getSupplier(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @PathVariable("id") Long supplierId) {
+        requireRole(authorizationHeader, "admin");
+        return supplierService.getSupplier(supplierId);
+    }
+
+    @PatchMapping("/suppliers/{id}")
+    public SupplierResponse updateSupplier(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @PathVariable("id") Long supplierId,
+            @Valid @RequestBody UpdateSupplierRequest request) {
+        requireRole(authorizationHeader, "admin");
+        return supplierService.updateSupplier(supplierId, request);
     }
 
     @DeleteMapping("/admin/orders/{id}")
