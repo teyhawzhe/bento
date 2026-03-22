@@ -62,7 +62,8 @@ public class OrderDeadlineService {
 
     public void ensureAdminOrderCreationWindowOpen(LocalDate orderDate) {
         ZonedDateTime now = now();
-        ZonedDateTime cutoff = ZonedDateTime.of(orderDate.minusDays(1), LocalTime.of(16, 30), ZONE_ID);
+        LocalDate deadlineDate = orderDate.minusDays(1);
+        ZonedDateTime cutoff = ZonedDateTime.of(deadlineDate, LocalTime.of(16, 30), ZONE_ID);
         if (!now.isBefore(cutoff)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "已超過代訂截止時間");
         }

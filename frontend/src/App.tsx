@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import axios from "axios";
 import {
+  cancelAdminOrder,
   cancelOrder,
   changePassword,
   createAdminOrder,
@@ -186,8 +187,18 @@ function employeeOrderCancellationDeadline(orderDate: string) {
   return cutoff;
 }
 
+function adminOrderCancellationDeadline(orderDate: string) {
+  const cutoff = new Date(`${orderDate}T16:30:00`);
+  cutoff.setDate(cutoff.getDate() - 1);
+  return cutoff;
+}
+
 function canCancelEmployeeOrder(orderDate: string, currentTime: Date) {
   return currentTime < employeeOrderCancellationDeadline(orderDate);
+}
+
+function canCancelAdminOrder(orderDate: string, currentTime: Date) {
+  return currentTime < adminOrderCancellationDeadline(orderDate);
 }
 
 function defaultTabForRole(role: UserRole): AppTabId {
@@ -885,6 +896,28 @@ export default function App() {
     }
   }
 
+  async function submitCancelAdminOrder(orderId: number, orderDate: string) {
+    if (!session) {
+      return;
+    }
+    if (!canCancelAdminOrder(orderDate, currentTime)) {
+      closeMessageBox();
+      openErrorBox("已超過管理員取消訂餐截止時間");
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await cancelAdminOrder(session.token, orderId);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      closeMessageBox();
+      openSuccessBox(response.data.message, "訂單已取消");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "管理員取消訂餐失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function submitCreateSupplier() {
     if (!session) {
       return;
@@ -1222,6 +1255,18 @@ export default function App() {
       "確定要取消這筆訂單嗎？",
       async () => submitCancelOrder(orderId, orderDate),
       "取消訂單",
+    );
+  }
+
+  function confirmCancelAdminOrder(orderId: number, orderDate: string) {
+    if (!canCancelAdminOrder(orderDate, currentTime)) {
+      openErrorBox("已超過管理員取消訂餐截止時間");
+      return;
+    }
+    openConfirmBox(
+      "確定要取消這筆員工訂單嗎？",
+      async () => submitCancelAdminOrder(orderId, orderDate),
+      "取消員工訂單",
     );
   }
 
@@ -1677,7 +1722,7 @@ export default function App() {
                           </select>
                         </div>
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                          截止提醒：僅可在當日 16:30 前代訂隔日便當，系統會保留 A003 17:00 供應商通知前的 30 分鐘緩衝。
+                          截止提醒：僅可在訂餐日前一日 16:30 前代訂隔日便當，系統會保留 A003 17:00 供應商通知前的 30 分鐘緩衝。
                         </div>
                         <button
                           className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -1759,11 +1804,26 @@ export default function App() {
                                   </p>
                                   <p className="text-sm text-ink/55">價格 NT${order.menuPrice}</p>
                                 </div>
-                                <span className="rounded-full bg-white px-3 py-1 text-xs text-ink/65">
-                                  #{order.employeeId}
-                                </span>
+                                <div className="flex items-start gap-2">
+                                  <span className="rounded-full bg-white px-3 py-1 text-xs text-ink/65">
+                                    #{order.employeeId}
+                                  </span>
+                                  {canCancelAdminOrder(order.orderDate, currentTime) ? (
+                                    <button
+                                      className="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm"
+                                      onClick={() => confirmCancelAdminOrder(order.id, order.orderDate)}
+                                      type="button"
+                                      disabled={loading}
+                                    >
+                                      取消
+                                    </button>
+                                  ) : null}
+                                </div>
                               </div>
                               <div className="mt-3 text-sm text-ink/60">
+                                <p>
+                                  取消截止 {formatDateTime(adminOrderCancellationDeadline(order.orderDate).toISOString())}
+                                </p>
                                 <p>建立者 {order.createdByName ?? "員工自助"}</p>
                                 <p>建立時間 {formatDateTime(order.createdAt)}</p>
                               </div>

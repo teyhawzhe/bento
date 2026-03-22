@@ -184,6 +184,14 @@ export function createAdminOrder(
   });
 }
 
+export function cancelAdminOrder(token: string, orderId: number) {
+  return api.delete<ApiMessageResponse>(`/admin/orders/${orderId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export function getMenus(token: string, includeHistory: boolean) {
   return api.get<Menu[]>("/menus", {
     headers: {

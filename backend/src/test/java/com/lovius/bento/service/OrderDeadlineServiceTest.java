@@ -118,19 +118,19 @@ class OrderDeadlineServiceTest {
     }
 
     @Test
-    void adminOrderCreationWindowOpenBeforePreviousDayFourThirtyPm() {
-        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T16:29:00+08:00"));
+    void adminOrderCreationWindowOpenBeforeOrderDatePreviousDayFourThirtyPm() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-04-01T16:29:00+08:00"));
 
-        assertDoesNotThrow(() -> service.ensureAdminOrderCreationWindowOpen(LocalDate.of(2026, 4, 1)));
+        assertDoesNotThrow(() -> service.ensureAdminOrderCreationWindowOpen(LocalDate.of(2026, 4, 2)));
     }
 
     @Test
-    void adminOrderCreationWindowClosedAtPreviousDayFourThirtyPm() {
-        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T16:30:00+08:00"));
+    void adminOrderCreationWindowClosedAtOrderDatePreviousDayFourThirtyPm() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-04-01T16:30:00+08:00"));
 
         ApiException exception = assertThrows(
                 ApiException.class,
-                () -> service.ensureAdminOrderCreationWindowOpen(LocalDate.of(2026, 4, 1)));
+                () -> service.ensureAdminOrderCreationWindowOpen(LocalDate.of(2026, 4, 2)));
 
         assertEquals("已超過代訂截止時間", exception.getMessage());
     }
