@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import axios from "axios";
 import {
   cancelOrder,
@@ -51,9 +51,36 @@ import type {
 
 const SESSION_KEY = "bento-session";
 const CATEGORY_OPTIONS = ["肉類", "海鮮", "素食"];
+const EMPLOYEE_TABS = [
+  { id: "employee-ordering", label: "訂便當" },
+  { id: "employee-password", label: "修改密碼" },
+] as const;
+const ADMIN_TABS = [
+  { id: "admin-orders", label: "訂單管理" },
+  { id: "admin-suppliers", label: "供應商管理" },
+  { id: "admin-reports", label: "報表設定" },
+  { id: "admin-settings", label: "系統設定" },
+] as const;
 
-function readInitialRole(): UserRole {
-  return window.location.pathname.startsWith("/admin") ? "admin" : "employee";
+type EmployeeTabId = (typeof EMPLOYEE_TABS)[number]["id"];
+type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
+type AppTabId = EmployeeTabId | AdminTabId;
+type MessageBoxVariant = "success" | "error" | "warning" | "confirm";
+
+interface TabDefinition {
+  id: AppTabId;
+  label: string;
+}
+
+interface MessageBoxState {
+  isOpen: boolean;
+  variant: MessageBoxVariant;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm?: (() => void | Promise<void>) | null;
+  onCancel?: (() => void) | null;
 }
 
 function readSession(): SessionUser | null {
@@ -95,6 +122,26 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatDateWithWeekday(value: string) {
+  return new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).format(new Date(value));
+}
+
+function formatCurrentTime(value: Date) {
+  return new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(value);
+}
+
 function toDateInputValue(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -125,11 +172,136 @@ function nextWeekdays() {
   return days;
 }
 
+function defaultTabForRole(role: UserRole): AppTabId {
+  return role === "admin" ? "admin-orders" : "employee-ordering";
+}
+
+function tabsForRole(role: UserRole): TabDefinition[] {
+  return role === "admin" ? [...ADMIN_TABS] : [...EMPLOYEE_TABS];
+}
+
+function isBlank(value: string) {
+  return value.trim().length === 0;
+}
+
+function PanelCard({ children }: { children: ReactNode }) {
+  return (
+    <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
+      {children}
+    </article>
+  );
+}
+
+function TabBar({
+  tabs,
+  activeTab,
+  onChange,
+}: {
+  tabs: TabDefinition[];
+  activeTab: AppTabId;
+  onChange: (tabId: AppTabId) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-3">
+      {tabs.map((tab) => {
+        const isActive = tab.id === activeTab;
+        return (
+          <button
+            key={tab.id}
+            className={`rounded-full px-5 py-2 text-sm font-medium transition ${
+              isActive
+                ? "bg-ink text-white shadow-sm"
+                : "border border-ink/10 bg-white text-ink/70 hover:border-pine hover:text-pine"
+            }`}
+            onClick={() => onChange(tab.id)}
+            type="button"
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function MessageBox({
+  state,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  state: MessageBoxState;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  if (!state.isOpen) {
+    return null;
+  }
+
+  const toneClasses: Record<MessageBoxVariant, string> = {
+    success: "border-emerald-200 bg-emerald-50 text-emerald-900",
+    error: "border-red-200 bg-red-50 text-red-900",
+    warning: "border-amber-200 bg-amber-50 text-amber-900",
+    confirm: "border-ink/10 bg-white text-ink",
+  };
+  const eyebrow: Record<MessageBoxVariant, string> = {
+    success: "Success",
+    error: "Error",
+    warning: "Warning",
+    confirm: "Confirm",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 px-4 py-6 backdrop-blur-sm">
+      <div className={`w-full max-w-md rounded-[1.75rem] border p-6 shadow-2xl ${toneClasses[state.variant]}`}>
+        <p className="text-xs uppercase tracking-[0.35em] opacity-70">{eyebrow[state.variant]}</p>
+        <h2 className="mt-3 text-2xl font-semibold">{state.title}</h2>
+        <p className="mt-3 whitespace-pre-line text-sm leading-7 opacity-90">{state.message}</p>
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
+          {state.variant === "confirm" ? (
+            <button
+              className="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onClose}
+              type="button"
+              disabled={busy}
+            >
+              {state.cancelLabel ?? "取消"}
+            </button>
+          ) : null}
+          <button
+            className={`rounded-full px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 ${
+              state.variant === "error"
+                ? "bg-red-700"
+                : state.variant === "warning"
+                  ? "bg-amber-700"
+                  : state.variant === "confirm"
+                    ? "bg-ink"
+                    : "bg-emerald-700"
+            }`}
+            onClick={() => void onConfirm()}
+            type="button"
+            disabled={busy}
+          >
+            {busy ? "處理中..." : state.confirmLabel ?? "確認"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [role, setRole] = useState<UserRole>(readInitialRole);
   const [session, setSession] = useState<SessionUser | null>(readSession);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState<AppTabId>(() => defaultTabForRole("employee"));
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [messageBox, setMessageBox] = useState<MessageBoxState>({
+    isOpen: false,
+    variant: "success",
+    title: "",
+    message: "",
+  });
+  const [messageBoxBusy, setMessageBoxBusy] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [employees, setEmployees] = useState<EmployeeSummary[]>([]);
@@ -200,20 +372,20 @@ export default function App() {
   });
 
   useEffect(() => {
-    if (!session || session.role !== role) {
+    if (!session) {
       return;
     }
 
-    if (role === "employee") {
+    if (session.role === "employee") {
       void loadEmployeeData(session.token);
       return;
     }
 
     void loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
-  }, [adminOrderFilters, includeHistory, role, session, supplierFilters]);
+  }, [adminOrderFilters, includeHistory, session, supplierFilters]);
 
   useEffect(() => {
-    if (role !== "admin" || !session) {
+    if (session?.role !== "admin") {
       return;
     }
 
@@ -231,10 +403,10 @@ export default function App() {
         menuId: availableMenus[0] ? String(availableMenus[0].id) : "",
       }));
     }
-  }, [adminOrderForm.menuId, adminOrderForm.orderDate, menus, role, session]);
+  }, [adminOrderForm.menuId, adminOrderForm.orderDate, menus, session]);
 
   useEffect(() => {
-    if (role !== "admin" || !session || adminOrderForm.employeeId) {
+    if (session?.role !== "admin" || adminOrderForm.employeeId) {
       return;
     }
 
@@ -245,7 +417,107 @@ export default function App() {
         employeeId: String(defaultEmployee.id),
       }));
     }
-  }, [adminOrderForm.employeeId, employees, role, session]);
+  }, [adminOrderForm.employeeId, employees, session]);
+
+  useEffect(() => {
+    setActiveTab(defaultTabForRole(session?.role ?? "employee"));
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [session]);
+
+  function closeMessageBox() {
+    setMessageBoxBusy(false);
+    setMessageBox({
+      isOpen: false,
+      variant: "success",
+      title: "",
+      message: "",
+    });
+  }
+
+  function openMessageBox(nextState: Omit<MessageBoxState, "isOpen">) {
+    setMessageBoxBusy(false);
+    setMessageBox({
+      isOpen: true,
+      ...nextState,
+    });
+  }
+
+  function openSuccessBox(message: string, title = "操作成功") {
+    openMessageBox({
+      variant: "success",
+      title,
+      message,
+    });
+  }
+
+  function openErrorBox(message: string, title = "操作失敗") {
+    openMessageBox({
+      variant: "error",
+      title,
+      message,
+    });
+  }
+
+  function openWarningBox(message: string, title = "請先確認資料") {
+    openMessageBox({
+      variant: "warning",
+      title,
+      message,
+    });
+  }
+
+  function openConfirmBox(
+    message: string,
+    onConfirm: () => void | Promise<void>,
+    title = "請確認",
+    confirmLabel = "確認",
+    cancelLabel = "取消",
+  ) {
+    openMessageBox({
+      variant: "confirm",
+      title,
+      message,
+      confirmLabel,
+      cancelLabel,
+      onConfirm,
+      onCancel: closeMessageBox,
+    });
+  }
+
+  async function handleMessageBoxConfirm() {
+    if (messageBox.variant === "confirm" && messageBox.onConfirm) {
+      try {
+        setMessageBoxBusy(true);
+        await messageBox.onConfirm();
+      } finally {
+        setMessageBoxBusy(false);
+      }
+      return;
+    }
+
+    closeMessageBox();
+  }
+
+  function validateWarning(message: string, checks: boolean[]) {
+    if (checks.every(Boolean)) {
+      return true;
+    }
+    openWarningBox(message);
+    return false;
+  }
 
   async function loadEmployeeData(token: string) {
     try {
@@ -319,27 +591,34 @@ export default function App() {
 
   function handleHttpError(unknownError: unknown, fallbackMessage: string) {
     if (axios.isAxiosError(unknownError)) {
-      setError(unknownError.response?.data?.message ?? fallbackMessage);
+      openErrorBox(unknownError.response?.data?.message ?? fallbackMessage);
       return;
     }
-    setError(fallbackMessage);
+    openErrorBox(fallbackMessage);
   }
 
   async function submitLogin() {
+    if (!validateWarning("請輸入帳號與密碼後再登入。", [!isBlank(loginForm.username), !isBlank(loginForm.password)])) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
-      const response = await login(role, loginForm);
+      const response = await login(loginForm);
       const nextSession: SessionUser = response.data;
       setSession(nextSession);
       persistSession(nextSession);
-      setMessage(role === "admin" ? "管理員登入成功，已進入菜單管理頁" : "登入成功，已進入訂餐頁");
-      if (role === "employee") {
+      setActiveTab(defaultTabForRole(nextSession.role));
+      if (nextSession.role === "employee") {
         await loadEmployeeData(nextSession.token);
       } else {
         await loadAdminData(nextSession.token, includeHistory, adminOrderFilters, supplierFilters);
       }
+      openSuccessBox(
+        nextSession.role === "admin"
+          ? "管理員登入成功，已進入訂單管理頁。"
+          : "登入成功，已進入訂便當頁。",
+        "歡迎回來",
+      );
     } catch (unknownError) {
       handleHttpError(unknownError, "登入失敗");
     } finally {
@@ -348,13 +627,14 @@ export default function App() {
   }
 
   async function submitForgotPassword() {
+    if (!validateWarning("請輸入 Email 後再寄送臨時密碼。", [!isBlank(forgotEmail)])) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await forgotPassword(forgotEmail);
-      setMessage(response.data.message);
       setForgotEmail("");
+      openSuccessBox(response.data.message, "寄送成功");
     } catch (unknownError) {
       handleHttpError(unknownError, "寄送臨時密碼失敗");
     } finally {
@@ -366,19 +646,25 @@ export default function App() {
     if (!session) {
       return;
     }
+    if (
+      !validateWarning("請完整輸入舊密碼與新密碼。", [
+        !isBlank(changeForm.oldPassword),
+        !isBlank(changeForm.newPassword),
+      ])
+    ) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await changePassword(
         session.token,
         changeForm.oldPassword,
         changeForm.newPassword,
       );
-      setMessage(response.data.message);
       setChangeForm({ oldPassword: "", newPassword: "" });
       setSession(null);
       persistSession(null);
+      openSuccessBox(`${response.data.message}\n請使用新密碼重新登入。`, "密碼已更新");
     } catch (unknownError) {
       handleHttpError(unknownError, "修改密碼失敗");
     } finally {
@@ -390,15 +676,22 @@ export default function App() {
     if (!session) {
       return;
     }
+    if (
+      !validateWarning("請完整填寫員工帳號、姓名與 Email。", [
+        !isBlank(createForm.username),
+        !isBlank(createForm.name),
+        !isBlank(createForm.email),
+      ])
+    ) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await createEmployee(session.token, createForm);
       setCreateResult(response.data);
       setCreateForm({ username: "", name: "", email: "" });
-      setMessage(response.data.message);
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox(response.data.message, "員工已建立");
     } catch (unknownError) {
       handleHttpError(unknownError, "新增員工失敗");
     } finally {
@@ -408,17 +701,15 @@ export default function App() {
 
   async function submitImportEmployees() {
     if (!session || !selectedFile) {
-      setError("請先選擇 CSV 檔案");
+      openWarningBox("請先選擇 CSV 檔案。");
       return;
     }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await importEmployees(session.token, selectedFile);
       setImportResult(response.data);
-      setMessage(response.data.message);
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox(response.data.message, "匯入完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "CSV 匯入失敗");
     } finally {
@@ -431,11 +722,10 @@ export default function App() {
       return;
     }
     setLoading(true);
-    setError("");
     try {
       await updateEmployeeStatus(session.token, employee.id, !employee.isActive);
-      setMessage(employee.isActive ? "員工已停用" : "員工已啟用");
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox(employee.isActive ? "員工已停用。" : "員工已啟用。", "狀態已更新");
     } catch (unknownError) {
       handleHttpError(unknownError, "更新狀態失敗");
     } finally {
@@ -448,13 +738,15 @@ export default function App() {
       return;
     }
     const nextPassword = resetForms[employeeId] ?? "";
+    if (!validateWarning("請先輸入新的密碼。", [!isBlank(nextPassword)])) {
+      return;
+    }
     setLoading(true);
-    setError("");
     try {
       await resetEmployeePassword(session.token, employeeId, nextPassword);
-      setMessage("密碼已重設，系統已送出通知");
       setResetForms((current) => ({ ...current, [employeeId]: "" }));
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox("密碼已重設，系統已送出通知。", "重設完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "重設密碼失敗");
     } finally {
@@ -466,23 +758,29 @@ export default function App() {
     if (!session) {
       return;
     }
+    if (
+      !validateWarning("請先選擇訂餐日期與便當選項。", [
+        !isBlank(orderForm.orderDate),
+        !isBlank(orderForm.menuId),
+      ])
+    ) {
+      return;
+    }
 
     const selectedMenuId = Number(orderForm.menuId);
     const existingOrder = orders.find((entry) => entry.orderDate === orderForm.orderDate);
 
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       if (existingOrder) {
         await updateOrder(session.token, existingOrder.id, { menuId: selectedMenuId });
-        setMessage("已更新當日訂餐");
+        openSuccessBox("已更新當日訂餐。", "訂單已更新");
       } else {
         await createOrder(session.token, {
           menuId: selectedMenuId,
           orderDate: orderForm.orderDate,
         });
-        setMessage("訂餐成功");
+        openSuccessBox("訂餐成功。", "送出完成");
       }
       await loadEmployeeData(session.token);
     } catch (unknownError) {
@@ -497,12 +795,11 @@ export default function App() {
       return;
     }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await cancelOrder(session.token, orderId);
-      setMessage(response.data.message);
       await loadEmployeeData(session.token);
+      closeMessageBox();
+      openSuccessBox(response.data.message, "訂單已取消");
     } catch (unknownError) {
       handleHttpError(unknownError, "取消訂餐失敗");
     } finally {
@@ -514,9 +811,18 @@ export default function App() {
     if (!session) {
       return;
     }
+    if (
+      !validateWarning("請完整填寫供應商名稱、Email、電話、負責人與營業登記編號。", [
+        !isBlank(supplierForm.name),
+        !isBlank(supplierForm.email),
+        !isBlank(supplierForm.phone),
+        !isBlank(supplierForm.contactPerson),
+        !isBlank(supplierForm.businessRegistrationNo),
+      ])
+    ) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await createSupplier(session.token, supplierForm);
       setSupplierForm({
@@ -530,7 +836,6 @@ export default function App() {
         ...current,
         supplierId: String(response.data.id),
       }));
-      setMessage(`供應商已建立，ID: ${response.data.id}`);
       setSelectedSupplier(response.data);
       setSupplierDetailForm({
         id: String(response.data.id),
@@ -542,6 +847,7 @@ export default function App() {
         isActive: response.data.isActive,
       });
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox(`供應商已建立，ID: ${response.data.id}`, "建立完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "新增供應商失敗");
     } finally {
@@ -554,7 +860,6 @@ export default function App() {
       return;
     }
     setLoading(true);
-    setError("");
     try {
       const response = await getSupplier(session.token, supplierId);
       setSelectedSupplier(response.data);
@@ -578,9 +883,17 @@ export default function App() {
     if (!session || !selectedSupplier) {
       return;
     }
+    if (
+      !validateWarning("請完整填寫供應商名稱、Email、電話與負責人。", [
+        !isBlank(supplierDetailForm.name),
+        !isBlank(supplierDetailForm.email),
+        !isBlank(supplierDetailForm.phone),
+        !isBlank(supplierDetailForm.contactPerson),
+      ])
+    ) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await updateSupplier(session.token, selectedSupplier.id, {
         name: supplierDetailForm.name,
@@ -599,8 +912,8 @@ export default function App() {
         businessRegistrationNo: response.data.businessRegistrationNo,
         isActive: response.data.isActive,
       });
-      setMessage("供應商資料已更新");
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox("供應商資料已更新。", "更新完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "更新供應商失敗");
     } finally {
@@ -612,14 +925,15 @@ export default function App() {
     if (!session) {
       return;
     }
+    if (!validateWarning("請輸入錯誤通知信箱 Email。", [!isBlank(errorEmailForm.email)])) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await createErrorEmail(session.token, errorEmailForm);
       setErrorEmails((current) => [response.data, ...current]);
       setErrorEmailForm({ email: "" });
-      setMessage("錯誤通知信箱已新增");
+      openSuccessBox("錯誤通知信箱已新增。", "建立完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "新增錯誤通知信箱失敗");
     } finally {
@@ -632,12 +946,11 @@ export default function App() {
       return;
     }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await deleteErrorEmail(session.token, id);
       setErrorEmails((current) => current.filter((item) => item.id !== id));
-      setMessage(response.data.message);
+      closeMessageBox();
+      openSuccessBox(response.data.message, "刪除完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "刪除錯誤通知信箱失敗");
     } finally {
@@ -649,14 +962,15 @@ export default function App() {
     if (!session) {
       return;
     }
+    if (!validateWarning("請輸入月結報表收件 Email。", [!isBlank(reportEmailForm.email)])) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await createReportEmail(session.token, reportEmailForm);
       setReportEmails((current) => [response.data, ...current]);
       setReportEmailForm({ email: "" });
-      setMessage("報表收件信箱已新增");
+      openSuccessBox("報表收件信箱已新增。", "建立完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "新增報表收件信箱失敗");
     } finally {
@@ -669,12 +983,11 @@ export default function App() {
       return;
     }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await deleteReportEmail(session.token, id);
       setReportEmails((current) => current.filter((item) => item.id !== id));
-      setMessage(response.data.message);
+      closeMessageBox();
+      openSuccessBox(response.data.message, "刪除完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "刪除報表收件信箱失敗");
     } finally {
@@ -687,16 +1000,15 @@ export default function App() {
       return;
     }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       const response = await triggerMonthlyBilling(session.token);
-      setMessage(
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox(
         `${response.data.message}，期間 ${formatDate(response.data.billingPeriodStart)} - ${formatDate(
           response.data.billingPeriodEnd,
         )}，共 ${response.data.supplierCount} 家供應商 / ${response.data.recipientCount} 位收件者`,
+        "月結報表已觸發",
       );
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
     } catch (unknownError) {
       handleHttpError(unknownError, "手動觸發月結報表失敗");
     } finally {
@@ -708,9 +1020,19 @@ export default function App() {
     if (!session) {
       return;
     }
+    if (
+      !validateWarning("請完整填寫供應商、便當名稱、分類、價格與有效期間。", [
+        !isBlank(menuForm.supplierId),
+        !isBlank(menuForm.name),
+        !isBlank(menuForm.category),
+        !isBlank(menuForm.price),
+        !isBlank(menuForm.validFrom),
+        !isBlank(menuForm.validTo),
+      ])
+    ) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       await createMenu(session.token, {
         supplierId: Number(menuForm.supplierId),
@@ -721,7 +1043,6 @@ export default function App() {
         validFrom: menuForm.validFrom,
         validTo: menuForm.validTo,
       });
-      setMessage("菜單建立成功");
       setMenuForm({
         supplierId: menuForm.supplierId,
         name: "",
@@ -732,6 +1053,7 @@ export default function App() {
         validTo: nextWeekdays()[4] ?? "",
       });
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox("菜單建立成功。", "建立完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "建立菜單失敗");
     } finally {
@@ -747,9 +1069,19 @@ export default function App() {
     if (!editing) {
       return;
     }
+    if (
+      !validateWarning("請完整填寫菜單名稱、供應商、分類、價格與有效期間。", [
+        typeof editing.supplierId === "number" && !Number.isNaN(editing.supplierId),
+        !isBlank(editing.name ?? ""),
+        !isBlank(editing.category ?? ""),
+        typeof editing.price === "number" && !Number.isNaN(editing.price),
+        !isBlank(editing.validFrom ?? ""),
+        !isBlank(editing.validTo ?? ""),
+      ])
+    ) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       await updateMenu(session.token, menuId, {
         supplierId: editing.supplierId,
@@ -760,13 +1092,13 @@ export default function App() {
         validFrom: editing.validFrom,
         validTo: editing.validTo,
       });
-      setMessage("菜單已更新");
       setEditingMenus((current) => {
         const next = { ...current };
         delete next[menuId];
         return next;
       });
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox("菜單已更新。", "更新完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "更新菜單失敗");
     } finally {
@@ -778,22 +1110,57 @@ export default function App() {
     if (!session) {
       return;
     }
+    if (
+      !validateWarning("請先選擇員工、日期與菜單。", [
+        !isBlank(adminOrderForm.employeeId),
+        !isBlank(adminOrderForm.orderDate),
+        !isBlank(adminOrderForm.menuId),
+      ])
+    ) {
+      return;
+    }
     setLoading(true);
-    setError("");
-    setMessage("");
     try {
       await createAdminOrder(session.token, {
         employeeId: Number(adminOrderForm.employeeId),
         menuId: Number(adminOrderForm.menuId),
         orderDate: adminOrderForm.orderDate,
       });
-      setMessage("已為員工建立隔日訂餐");
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox("已為員工建立隔日訂餐。", "建立完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "管理員代訂失敗");
     } finally {
       setLoading(false);
     }
+  }
+
+  function confirmCancelOrder(orderId: number) {
+    openConfirmBox("確定要取消這筆訂單嗎？", async () => submitCancelOrder(orderId), "取消訂單");
+  }
+
+  function confirmDeleteErrorEmail(id: number) {
+    openConfirmBox(
+      "確定要刪除這筆錯誤通知信箱嗎？",
+      async () => submitDeleteErrorEmail(id),
+      "刪除錯誤通知信箱",
+    );
+  }
+
+  function confirmDeleteReportEmail(id: number) {
+    openConfirmBox(
+      "確定要刪除這筆月結報表收件信箱嗎？",
+      async () => submitDeleteReportEmail(id),
+      "刪除報表收件信箱",
+    );
+  }
+
+  function confirmToggleEmployeeStatus(employee: EmployeeSummary) {
+    openConfirmBox(
+      employee.isActive ? "確定要停用這位員工嗎？" : "確定要啟用這位員工嗎？",
+      async () => toggleEmployeeStatus(employee),
+      employee.isActive ? "停用員工" : "啟用員工",
+    );
   }
 
   async function logout() {
@@ -819,15 +1186,17 @@ export default function App() {
     setMonthlyBillingLogs([]);
     setSelectedSupplier(null);
     setDeadlineMessage("");
-    setMessage("已安全登出");
-    setError("");
+    setActiveTab(defaultTabForRole("employee"));
+    openSuccessBox("已安全登出。", "登出完成");
   }
 
-  const introText =
-    role === "admin"
-      ? "管理員可登入後維護供應商、菜單與員工帳號，並查看歷史菜單。"
-      : "員工可登入後瀏覽下週工作日便當、修改訂單與查看個人訂餐記錄。";
+  const introText = session
+    ? session.role === "admin"
+      ? "管理員登入後會直接進入訂單管理 TAB，並可切換供應商管理、報表設定與系統設定。"
+      : "員工登入後會直接進入訂便當 TAB，在同一畫面左側下單、右側查看我的訂單，並可切換到修改密碼。"
+    : "登入成功後，系統會依帳號角色直接導向對應的 TAB 主頁，不再顯示員工入口或管理員入口選擇頁。";
 
+  const currentTabs = session ? tabsForRole(session.role) : [];
   const selectedOrder = orders.find((entry) => entry.orderDate === orderForm.orderDate);
   const availableAdminMenus = menus.filter(
     (menu) => menu.validFrom <= adminOrderForm.orderDate && adminOrderForm.orderDate <= menu.validTo,
@@ -836,84 +1205,69 @@ export default function App() {
   return (
     <main className="min-h-screen px-4 py-6 text-ink sm:px-6 lg:px-10">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <header className="overflow-hidden rounded-[2rem] border border-white/60 bg-white/70 shadow-float backdrop-blur">
-          <div className="grid gap-6 px-6 py-8 lg:grid-cols-[1.15fr_0.85fr] lg:px-10">
-            <div className="space-y-5">
-              <p className="text-sm uppercase tracking-[0.35em] text-pine/70">A002 Bento Ordering</p>
-              <div className="space-y-3">
-                <h1 className="max-w-2xl text-3xl font-semibold leading-tight sm:text-5xl">
-                  公司員工訂便當系統
-                  <span className="block text-clay">
-                    {role === "admin" ? "菜單與供應商管理" : "下週便當訂餐入口"}
-                  </span>
-                </h1>
-                <p className="max-w-xl text-sm leading-7 text-ink/70 sm:text-base">{introText}</p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  className={`rounded-full px-5 py-2 text-sm transition ${
-                    role === "employee"
-                      ? "bg-ink text-white"
-                      : "border border-ink/10 bg-white text-ink/70"
-                  }`}
-                  onClick={() => setRole("employee")}
-                  type="button"
-                >
-                  員工入口
-                </button>
-                <button
-                  className={`rounded-full px-5 py-2 text-sm transition ${
-                    role === "admin"
-                      ? "bg-pine text-white"
-                      : "border border-ink/10 bg-white text-ink/70"
-                  }`}
-                  onClick={() => setRole("admin")}
-                  type="button"
-                >
-                  管理員入口
-                </button>
-              </div>
-            </div>
-            <div className="rounded-[1.75rem] border border-ink/10 bg-[#171717] px-6 py-6 text-white">
-              <p className="text-sm uppercase tracking-[0.3em] text-white/55">Demo Accounts</p>
-              <div className="mt-5 space-y-4 text-sm text-white/80">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-white">員工</p>
-                  <p>帳號: alice</p>
-                  <p>密碼: WelcomeA1</p>
+        {!session ? (
+          <header className="overflow-hidden rounded-[2rem] border border-white/60 bg-white/70 shadow-float backdrop-blur">
+            <div className="grid gap-6 px-6 py-8 lg:grid-cols-[1.15fr_0.85fr] lg:px-10">
+              <div className="space-y-5">
+                <p className="text-sm uppercase tracking-[0.35em] text-pine/70">A002 Bento Ordering</p>
+                <div className="space-y-3">
+                  <h1 className="max-w-2xl text-3xl font-semibold leading-tight sm:text-5xl">
+                    公司員工訂便當系統
+                    <span className="block text-clay">角色自動導向登入入口</span>
+                  </h1>
+                  <p className="max-w-xl text-sm leading-7 text-ink/70 sm:text-base">{introText}</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-white">管理員</p>
-                  <p>帳號: admin</p>
-                  <p>密碼: AdminPassA1</p>
+                <div className="rounded-[1.5rem] border border-ink/10 bg-white/70 px-4 py-4 text-sm leading-7 text-ink/70">
+                  系統會在登入成功後依 JWT 角色自動進入對應主頁：
+                  員工進入「訂便當」，管理員進入「訂單管理」。
+                </div>
+              </div>
+              <div className="rounded-[1.75rem] border border-ink/10 bg-[#171717] px-6 py-6 text-white">
+                <p className="text-sm uppercase tracking-[0.3em] text-white/55">Demo Accounts</p>
+                <div className="mt-5 space-y-4 text-sm text-white/80">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-white">員工</p>
+                    <p>帳號: alice</p>
+                    <p>密碼: WelcomeA1</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-white">管理員</p>
+                    <p>帳號: admin</p>
+                    <p>密碼: AdminPassA1</p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </header>
+          </header>
+        ) : (
+          <header className="rounded-[1.75rem] border border-white/60 bg-white/80 px-5 py-4 shadow-float backdrop-blur sm:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-pine/70">Workspace</p>
+                <h1 className="mt-2 text-xl font-semibold text-ink">公司員工訂便當系統</h1>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-medium text-clay">{formatCurrentTime(currentTime)}</p>
+                <p className="text-sm font-medium text-ink">{session.name}</p>
+                <p className="text-sm text-ink/65">
+                  {session.role === "admin" ? "管理員" : "員工"} / 預設頁籤{" "}
+                  {session.role === "admin" ? "訂單管理" : "訂便當"}
+                </p>
+              </div>
+            </div>
+          </header>
+        )}
 
-        {error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        ) : null}
-        {message ? (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {message}
-          </div>
-        ) : null}
-
-        {!session || session.role !== role ? (
+        {!session ? (
           <section className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-            <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
+            <PanelCard>
               <div className="space-y-6">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">
-                    {role === "admin" ? "Admin Login" : "Employee Login"}
+                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Unified Login</p>
+                  <h2 className="mt-3 text-2xl font-semibold">登入系統</h2>
+                  <p className="mt-2 text-sm leading-7 text-ink/70">
+                    不需先選擇員工或管理員入口，系統會在登入成功後自動導向對應 TAB 主頁。
                   </p>
-                  <h2 className="mt-3 text-2xl font-semibold">
-                    {role === "admin" ? "管理員登入" : "員工登入"}
-                  </h2>
                 </div>
                 <div className="grid gap-4">
                   <label className="grid gap-2 text-sm text-ink/70">
@@ -944,10 +1298,10 @@ export default function App() {
                   type="button"
                   disabled={loading}
                 >
-                  {loading ? "處理中..." : role === "admin" ? "登入管理後台" : "登入訂餐頁"}
+                  {loading ? "處理中..." : "登入並自動導向"}
                 </button>
               </div>
-            </article>
+            </PanelCard>
 
             <article className="rounded-[2rem] border border-white/60 bg-[#f1e8db]/80 p-6 shadow-float backdrop-blur sm:p-8">
               <div className="space-y-6">
@@ -979,12 +1333,12 @@ export default function App() {
           </section>
         ) : null}
 
-        {session && role === "employee" ? (
-          <section className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-            <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
+        {session?.role === "employee" ? (
+          <section className="grid gap-6">
+            <PanelCard>
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Employee Ordering</p>
+                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Employee Workspace</p>
                   <h2 className="mt-3 text-2xl font-semibold">{session.name}</h2>
                   <p className="mt-2 text-sm text-ink/65">登入身分: 員工 / 帳號 {session.username}</p>
                 </div>
@@ -996,151 +1350,177 @@ export default function App() {
                   登出
                 </button>
               </div>
+              <div className="mt-6 space-y-6">
+                <TabBar tabs={currentTabs} activeTab={activeTab} onChange={setActiveTab} />
 
-              {deadlineMessage ? (
-                <div className="mt-6 rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-                  {deadlineMessage}
-                </div>
-              ) : (
-                <div className="mt-6 space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="grid gap-2 text-sm text-ink/70">
-                      訂餐日期
-                      <select
-                        className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
-                        value={orderForm.orderDate}
-                        onChange={(event) =>
-                          setOrderForm((current) => ({ ...current, orderDate: event.target.value }))
-                        }
-                      >
-                        {nextWeekdays().map((day) => (
-                          <option key={day} value={day}>
-                            {formatDate(day)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="grid gap-2 text-sm text-ink/70">
-                      便當選項
-                      <select
-                        className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
-                        value={orderForm.menuId}
-                        onChange={(event) =>
-                          setOrderForm((current) => ({ ...current, menuId: event.target.value }))
-                        }
-                      >
-                        {employeeMenus.map((menu) => (
-                          <option key={menu.id} value={menu.id}>
-                            {menu.name} / {menu.category}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="rounded-[1.5rem] bg-[#171717] p-5 text-sm leading-7 text-white/80">
-                    員工端不顯示價格資訊。若同一天已經下單，送出後會以最新選擇覆蓋舊訂單。
-                  </div>
-                  {selectedOrder ? (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                      {formatDate(selectedOrder.orderDate)} 已有訂單，目前為 {selectedOrder.menuName}
-                    </div>
-                  ) : null}
-                  <button
-                    className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    onClick={() => void submitOrder()}
-                    type="button"
-                    disabled={loading || !orderForm.menuId}
-                  >
-                    {selectedOrder ? "更新當日訂單" : "送出訂餐"}
-                  </button>
-                </div>
-              )}
-            </article>
-
-            <article className="rounded-[2rem] border border-white/60 bg-[#f1e8db]/80 p-6 shadow-float backdrop-blur sm:p-8">
-              <div className="space-y-6">
-                <div>
-                  <p className="text-sm uppercase tracking-[0.35em] text-clay/80">History</p>
-                  <h2 className="mt-3 text-2xl font-semibold">個人訂餐記錄</h2>
-                </div>
-                <div className="grid gap-3">
-                  {orders.length ? (
-                    orders.map((order) => (
-                      <div key={order.id} className="rounded-2xl border border-ink/10 bg-white p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-medium text-ink">{order.menuName}</p>
-                            <p className="mt-1 text-sm text-ink/65">訂餐日期 {formatDate(order.orderDate)}</p>
-                            <p className="text-xs text-ink/45">建立時間 {formatDateTime(order.createdAt)}</p>
-                          </div>
-                          <button
-                            className="rounded-full border border-ink/10 px-4 py-2 text-sm"
-                            onClick={() => void submitCancelOrder(order.id)}
-                            type="button"
-                            disabled={loading}
-                          >
-                            取消
-                          </button>
-                        </div>
+                {activeTab === "employee-ordering" ? (
+                  <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                    <div className="space-y-4 rounded-[1.75rem] border border-ink/10 bg-[#fcfbf7] p-6">
+                      <div>
+                        <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Ordering</p>
+                        <h3 className="mt-3 text-xl font-semibold">訂便當</h3>
                       </div>
-                    ))
-                  ) : (
-                    <div className="rounded-2xl border border-ink/10 bg-white p-4 text-sm text-ink/65">
-                      目前尚無個人訂餐記錄
+                      {deadlineMessage ? (
+                        <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+                          {deadlineMessage}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <label className="grid gap-2 text-sm text-ink/70">
+                              訂餐日期
+                              <select
+                                className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                                value={orderForm.orderDate}
+                                onChange={(event) =>
+                                  setOrderForm((current) => ({ ...current, orderDate: event.target.value }))
+                                }
+                              >
+                                {nextWeekdays().map((day) => (
+                                  <option key={day} value={day}>
+                                    {formatDateWithWeekday(day)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="grid gap-2 text-sm text-ink/70">
+                              便當選項
+                              <select
+                                className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                                value={orderForm.menuId}
+                                onChange={(event) =>
+                                  setOrderForm((current) => ({ ...current, menuId: event.target.value }))
+                                }
+                              >
+                                {employeeMenus.map((menu) => (
+                                  <option key={menu.id} value={menu.id}>
+                                    {menu.name} / {menu.category}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          <div className="rounded-[1.5rem] bg-[#171717] p-5 text-sm leading-7 text-white/80">
+                            員工端不顯示價格資訊。若同一天已經下單，送出後會以最新選擇覆蓋舊訂單。
+                          </div>
+                          {selectedOrder ? (
+                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                              {formatDateWithWeekday(selectedOrder.orderDate)} 已有訂單，目前為 {selectedOrder.menuName}
+                            </div>
+                          ) : null}
+                          <button
+                            className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void submitOrder()}
+                            type="button"
+                            disabled={loading || !orderForm.menuId}
+                          >
+                            {selectedOrder ? "更新當日訂單" : "送出訂餐"}
+                          </button>
+                        </>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <div className="space-y-4 rounded-2xl border border-ink/10 bg-white p-5">
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Security</p>
-                    <h3 className="mt-2 text-xl font-semibold">修改密碼</h3>
+                    <div className="space-y-4 rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
+                      <div>
+                        <p className="text-sm uppercase tracking-[0.35em] text-clay/80">My Orders</p>
+                        <h3 className="mt-3 text-xl font-semibold">我的訂單</h3>
+                        <p className="mt-2 text-sm leading-7 text-ink/65">
+                          送出訂單後，右側會同步顯示目前個人訂單；取消操作仍會先跳出確認 MessageBox。
+                        </p>
+                      </div>
+                      <div className="grid gap-3">
+                        {orders.length ? (
+                          orders.map((order) => (
+                            <div key={order.id} className="rounded-2xl border border-ink/10 bg-white p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-ink">{order.menuName}</p>
+                                  <p className="mt-1 text-sm text-ink/65">
+                                    訂餐日期 {formatDateWithWeekday(order.orderDate)}
+                                  </p>
+                                  <p className="text-xs text-ink/45">
+                                    建立時間 {formatDateTime(order.createdAt)}
+                                  </p>
+                                </div>
+                                <button
+                                  className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                                  onClick={() => confirmCancelOrder(order.id)}
+                                  type="button"
+                                  disabled={loading}
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-2xl border border-ink/10 bg-white p-4 text-sm text-ink/65">
+                            目前尚無個人訂餐記錄
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <label className="grid gap-2 text-sm text-ink/70">
-                    舊密碼
-                    <input
-                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
-                      type="password"
-                      value={changeForm.oldPassword}
-                      onChange={(event) =>
-                        setChangeForm((current) => ({ ...current, oldPassword: event.target.value }))
-                      }
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm text-ink/70">
-                    新密碼
-                    <input
-                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
-                      type="password"
-                      value={changeForm.newPassword}
-                      onChange={(event) =>
-                        setChangeForm((current) => ({ ...current, newPassword: event.target.value }))
-                      }
-                    />
-                  </label>
-                  <button
-                    className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    onClick={() => void submitChangePassword()}
-                    type="button"
-                    disabled={loading}
-                  >
-                    更新密碼
-                  </button>
-                </div>
+                ) : null}
+
+                {activeTab === "employee-password" ? (
+                  <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
+                    <div className="space-y-4 rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
+                      <div>
+                        <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Security</p>
+                        <h3 className="mt-3 text-xl font-semibold">修改密碼</h3>
+                      </div>
+                      <label className="grid gap-2 text-sm text-ink/70">
+                        舊密碼
+                        <input
+                          className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                          type="password"
+                          value={changeForm.oldPassword}
+                          onChange={(event) =>
+                            setChangeForm((current) => ({ ...current, oldPassword: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className="grid gap-2 text-sm text-ink/70">
+                        新密碼
+                        <input
+                          className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                          type="password"
+                          value={changeForm.newPassword}
+                          onChange={(event) =>
+                            setChangeForm((current) => ({ ...current, newPassword: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <button
+                        className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => void submitChangePassword()}
+                        type="button"
+                        disabled={loading}
+                      >
+                        更新密碼
+                      </button>
+                    </div>
+
+                    <div className="rounded-[1.75rem] border border-ink/10 bg-white p-6 text-sm leading-7 text-ink/65">
+                      修改密碼完成後，系統會要求重新登入。若你只是想查看或取消目前訂單，可回到「訂便當」TAB，在右側直接操作我的訂單。
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            </article>
+            </PanelCard>
           </section>
         ) : null}
 
-        {session && role === "admin" ? (
+        {session?.role === "admin" ? (
           <section className="grid gap-6">
-            <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
+            <PanelCard>
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Admin Console</p>
                   <h2 className="mt-3 text-2xl font-semibold">{session.name}</h2>
                   <p className="mt-2 text-sm text-ink/65">
-                    這裡可以管理供應商、建立菜單、錯誤通知信箱，並維護員工帳號。
+                    這裡可以依 TAB 切換訂單管理、供應商管理、報表設定與系統設定，不重新整理整頁。
                   </p>
                 </div>
                 <button
@@ -1151,494 +1531,306 @@ export default function App() {
                   登出
                 </button>
               </div>
-            </article>
+              <div className="mt-6 space-y-6">
+                <TabBar tabs={currentTabs} activeTab={activeTab} onChange={setActiveTab} />
 
-            <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-              <article className="rounded-[2rem] border border-white/60 bg-[#f1e8db]/80 p-6 shadow-float backdrop-blur sm:p-8">
-                <div className="space-y-8">
-                  <section className="space-y-4">
-                    <div>
-                      <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Settings</p>
-                      <h3 className="mt-3 text-xl font-semibold">錯誤通知信箱</h3>
-                      <p className="mt-2 text-sm leading-7 text-ink/65">
-                        A003 供應商通知排程失敗時，會直接讀取這份收件清單。
-                      </p>
-                    </div>
-                    <div className="flex gap-3">
-                      <input
-                        className="flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="ops-alerts@company.local"
-                        value={errorEmailForm.email}
-                        onChange={(event) =>
-                          setErrorEmailForm({ email: event.target.value })
-                        }
-                      />
-                      <button
-                        className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => void submitCreateErrorEmail()}
-                        type="button"
-                        disabled={loading}
-                      >
-                        新增
-                      </button>
-                    </div>
-                    <div className="grid gap-3">
-                      {errorEmails.length ? (
-                        errorEmails.map((entry) => (
-                          <div
-                            key={entry.id}
-                            className="flex items-center justify-between gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-4"
-                          >
-                            <div>
-                              <p className="font-medium text-ink">{entry.email}</p>
-                              <p className="mt-1 text-xs text-ink/45">
-                                建立者 #{entry.createdBy} / {formatDateTime(entry.createdAt)}
-                              </p>
-                            </div>
-                            <button
-                              className="rounded-full border border-ink/10 px-4 py-2 text-sm"
-                              onClick={() => void submitDeleteErrorEmail(entry.id)}
-                              type="button"
-                              disabled={loading}
-                            >
-                              刪除
-                            </button>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
-                          目前尚未設定錯誤通知信箱
+                {activeTab === "admin-orders" ? (
+                  <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Admin Orders</p>
+                          <h3 className="mt-3 text-xl font-semibold">代替員工新增隔日訂餐</h3>
                         </div>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="space-y-4">
-                    <div>
-                      <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Monthly Billing</p>
-                      <h3 className="mt-3 text-xl font-semibold">月結報表</h3>
-                      <p className="mt-2 text-sm leading-7 text-ink/65">
-                        手動重跑當期月結報表，會寄給供應商信箱與 A008 報表收件清單。
-                      </p>
-                    </div>
-                    <button
-                      className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => void submitMonthlyBillingTrigger()}
-                      type="button"
-                      disabled={loading}
-                    >
-                      手動觸發月結報表
-                    </button>
-                    <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/70">
-                      目前共有 {monthlyBillingLogs.length} 筆月結發送紀錄，可在右側列表查看細節。
-                    </div>
-                  </section>
-
-                  <section className="space-y-4">
-                    <div>
-                      <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Report Recipients</p>
-                      <h3 className="mt-3 text-xl font-semibold">月結報表收件信箱</h3>
-                      <p className="mt-2 text-sm leading-7 text-ink/65">
-                        A005 月結報表寄送時，除了供應商外，也會寄送到這份內部收件清單。
-                      </p>
-                    </div>
-                    <div className="flex gap-3">
-                      <input
-                        className="flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="finance-reports@company.local"
-                        value={reportEmailForm.email}
-                        onChange={(event) => setReportEmailForm({ email: event.target.value })}
-                      />
-                      <button
-                        className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => void submitCreateReportEmail()}
-                        type="button"
-                        disabled={loading}
-                      >
-                        新增
-                      </button>
-                    </div>
-                    <div className="grid gap-3">
-                      {reportEmails.length ? (
-                        reportEmails.map((entry) => (
-                          <div
-                            key={entry.id}
-                            className="flex items-center justify-between gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-4"
-                          >
-                            <div>
-                              <p className="font-medium text-ink">{entry.email}</p>
-                              <p className="mt-1 text-xs text-ink/45">
-                                建立者 #{entry.createdBy} / {formatDateTime(entry.createdAt)}
-                              </p>
-                            </div>
-                            <button
-                              className="rounded-full border border-ink/10 px-4 py-2 text-sm"
-                              onClick={() => void submitDeleteReportEmail(entry.id)}
-                              type="button"
-                              disabled={loading}
-                            >
-                              刪除
-                            </button>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
-                          目前尚未設定報表收件信箱
-                        </div>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="space-y-4">
-                    <div>
-                      <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Admin Orders</p>
-                      <h3 className="mt-3 text-xl font-semibold">代替員工新增隔日訂餐</h3>
-                      <p className="mt-2 text-sm leading-7 text-ink/65">
-                        僅允許建立隔日便當，且必須在訂餐日前一日 17:00 前完成。
-                      </p>
-                    </div>
-                    <div className="grid gap-3">
-                      <select
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        value={adminOrderForm.employeeId}
-                        onChange={(event) =>
-                          setAdminOrderForm((current) => ({
-                            ...current,
-                            employeeId: event.target.value,
-                          }))
-                        }
-                      >
-                        {employees.map((employee) => (
-                          <option key={employee.id} value={employee.id}>
-                            #{employee.id} {employee.name} {employee.isAdmin ? "(Admin)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        type="date"
-                        value={adminOrderForm.orderDate}
-                        onChange={(event) =>
-                          setAdminOrderForm((current) => ({
-                            ...current,
-                            orderDate: event.target.value,
-                          }))
-                        }
-                      />
-                      <select
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        value={adminOrderForm.menuId}
-                        onChange={(event) =>
-                          setAdminOrderForm((current) => ({
-                            ...current,
-                            menuId: event.target.value,
-                          }))
-                        }
-                      >
-                        {availableAdminMenus.map((menu) => (
-                          <option key={menu.id} value={menu.id}>
-                            {menu.name} / {menu.category} / NT${menu.price}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                      截止提醒：管理員代訂與 A003 供應商通知共用截止邊界，逾時後系統會拒絕送出。
-                    </div>
-                    <button
-                      className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => void submitAdminOrder()}
-                      type="button"
-                      disabled={
-                        loading ||
-                        !adminOrderForm.employeeId ||
-                        !adminOrderForm.menuId ||
-                        availableAdminMenus.length === 0
-                      }
-                    >
-                      為員工建立隔日訂單
-                    </button>
-                    {!availableAdminMenus.length ? (
-                      <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
-                        指定日期目前沒有可代訂的菜單，請先建立有效菜單。
-                      </div>
-                    ) : null}
-                  </section>
-
-                  <section className="space-y-4">
-                    <div>
-                      <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Suppliers</p>
-                      <h3 className="mt-3 text-xl font-semibold">供應商管理</h3>
-                      <p className="mt-2 text-sm leading-7 text-ink/65">
-                        可先依名稱搜尋供應商，再載入單筆明細進行編輯；下方仍保留新增供應商入口。
-                      </p>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-[1fr_140px_auto]">
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="輸入供應商名稱"
-                        value={supplierFilters.name}
-                        onChange={(event) =>
-                          setSupplierFilters((current) => ({ ...current, name: event.target.value }))
-                        }
-                      />
-                      <select
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        value={supplierFilters.searchType}
-                        onChange={(event) =>
-                          setSupplierFilters((current) => ({
-                            ...current,
-                            searchType: event.target.value as "exact" | "fuzzy",
-                          }))
-                        }
-                      >
-                        <option value="exact">精確查詢</option>
-                        <option value="fuzzy">模糊查詢</option>
-                      </select>
-                      <div className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm text-ink/65">
-                        共 {suppliers.length} 筆
-                      </div>
-                    </div>
-                    <div className="grid gap-3">
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="供應商名稱"
-                        value={supplierForm.name}
-                        onChange={(event) =>
-                          setSupplierForm((current) => ({ ...current, name: event.target.value }))
-                        }
-                      />
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="通知 Email"
-                        value={supplierForm.email}
-                        onChange={(event) =>
-                          setSupplierForm((current) => ({ ...current, email: event.target.value }))
-                        }
-                      />
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="聯繫電話"
-                        value={supplierForm.phone}
-                        onChange={(event) =>
-                          setSupplierForm((current) => ({ ...current, phone: event.target.value }))
-                        }
-                      />
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="負責人"
-                        value={supplierForm.contactPerson}
-                        onChange={(event) =>
-                          setSupplierForm((current) => ({
-                            ...current,
-                            contactPerson: event.target.value,
-                          }))
-                        }
-                      />
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="營業登記編號"
-                        value={supplierForm.businessRegistrationNo}
-                        onChange={(event) =>
-                          setSupplierForm((current) => ({
-                            ...current,
-                            businessRegistrationNo: event.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <button
-                      className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => void submitCreateSupplier()}
-                      type="button"
-                      disabled={loading}
-                    >
-                      建立供應商
-                    </button>
-                    <div className="grid gap-3">
-                      {suppliers.length ? (
-                        suppliers.map((supplier) => (
-                          <button
-                            key={supplier.id}
-                            className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-left transition hover:border-pine"
-                            onClick={() => void loadSupplierDetail(supplier.id)}
-                            type="button"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-medium text-ink">{supplier.name}</p>
-                                <p className="mt-1 text-sm text-ink/65">{supplier.email}</p>
-                                <p className="text-xs text-ink/45">
-                                  #{supplier.id} / {supplier.contactPerson}
-                                </p>
-                              </div>
-                              <span
-                                className={`rounded-full px-3 py-1 text-xs ${
-                                  supplier.isActive
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : "bg-zinc-200 text-zinc-700"
-                                }`}
-                              >
-                                {supplier.isActive ? "啟用中" : "已停用"}
-                              </span>
-                            </div>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
-                          目前查無符合條件的供應商
-                        </div>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="space-y-4">
-                    <div>
-                      <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Menus</p>
-                      <h3 className="mt-3 text-xl font-semibold">建立菜單</h3>
-                    </div>
-                    <div className="grid gap-3">
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="供應商 ID"
-                        value={menuForm.supplierId}
-                        onChange={(event) =>
-                          setMenuForm((current) => ({ ...current, supplierId: event.target.value }))
-                        }
-                      />
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="便當名稱"
-                        value={menuForm.name}
-                        onChange={(event) =>
-                          setMenuForm((current) => ({ ...current, name: event.target.value }))
-                        }
-                      />
-                      <select
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        value={menuForm.category}
-                        onChange={(event) =>
-                          setMenuForm((current) => ({ ...current, category: event.target.value }))
-                        }
-                      >
-                        {CATEGORY_OPTIONS.map((category) => (
-                          <option key={category} value={category}>
-                            {category}
-                          </option>
-                        ))}
-                      </select>
-                      <textarea
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="說明"
-                        value={menuForm.description}
-                        onChange={(event) =>
-                          setMenuForm((current) => ({ ...current, description: event.target.value }))
-                        }
-                      />
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                        placeholder="價格"
-                        value={menuForm.price}
-                        onChange={(event) =>
-                          setMenuForm((current) => ({ ...current, price: event.target.value }))
-                        }
-                      />
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <input
-                          className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                          type="date"
-                          value={menuForm.validFrom}
-                          onChange={(event) =>
-                            setMenuForm((current) => ({ ...current, validFrom: event.target.value }))
-                          }
-                        />
-                        <input
-                          className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                          type="date"
-                          value={menuForm.validTo}
-                          onChange={(event) =>
-                            setMenuForm((current) => ({ ...current, validTo: event.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <button
-                      className="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => void submitCreateMenu()}
-                      type="button"
-                      disabled={loading}
-                    >
-                      建立菜單
-                    </button>
-                  </section>
-                </div>
-              </article>
-
-              <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Menu List</p>
-                    <h3 className="mt-3 text-xl font-semibold">菜單清單</h3>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-ink/70">
-                    <input
-                      checked={includeHistory}
-                      onChange={(event) => setIncludeHistory(event.target.checked)}
-                      type="checkbox"
-                    />
-                    顯示歷史菜單
-                  </label>
-                </div>
-
-                <div className="mt-6 grid gap-4">
-                  {menus.map((menu) => {
-                    const editing = editingMenus[menu.id] ?? menu;
-                    return (
-                      <div
-                        key={menu.id}
-                        className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5"
-                      >
                         <div className="grid gap-3">
-                          <div className="grid gap-3 sm:grid-cols-2">
+                          <select
+                            className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                            value={adminOrderForm.employeeId}
+                            onChange={(event) =>
+                              setAdminOrderForm((current) => ({ ...current, employeeId: event.target.value }))
+                            }
+                          >
+                            {employees.map((employee) => (
+                              <option key={employee.id} value={employee.id}>
+                                #{employee.id} {employee.name} {employee.isAdmin ? "(Admin)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                            type="date"
+                            value={adminOrderForm.orderDate}
+                            onChange={(event) =>
+                              setAdminOrderForm((current) => ({ ...current, orderDate: event.target.value }))
+                            }
+                          />
+                          <select
+                            className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                            value={adminOrderForm.menuId}
+                            onChange={(event) =>
+                              setAdminOrderForm((current) => ({ ...current, menuId: event.target.value }))
+                            }
+                          >
+                            {availableAdminMenus.map((menu) => (
+                              <option key={menu.id} value={menu.id}>
+                                {menu.name} / {menu.category} / NT${menu.price}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                          截止提醒：管理員代訂與 A003 供應商通知共用截止邊界，逾時後系統會拒絕送出。
+                        </div>
+                        <button
+                          className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => void submitAdminOrder()}
+                          type="button"
+                          disabled={
+                            loading ||
+                            !adminOrderForm.employeeId ||
+                            !adminOrderForm.menuId ||
+                            availableAdminMenus.length === 0
+                          }
+                        >
+                          為員工建立隔日訂單
+                        </button>
+                        {!availableAdminMenus.length ? (
+                          <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
+                            指定日期目前沒有可代訂的菜單，請先建立有效菜單。
+                          </div>
+                        ) : null}
+                      </div>
+                    </article>
+
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                      <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Overview</p>
+                          <h3 className="mt-3 text-xl font-semibold">員工訂單總覽</h3>
+                        </div>
+                        <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                          {adminOrders.length} 筆
+                        </span>
+                      </div>
+                      <div className="mt-6 grid gap-4 lg:grid-cols-[0.8fr_0.8fr_1.4fr]">
+                        <input
+                          className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm outline-none transition focus:border-pine"
+                          type="date"
+                          value={adminOrderFilters.date}
+                          onChange={(event) =>
+                            setAdminOrderFilters((current) => ({ ...current, date: event.target.value }))
+                          }
+                        />
+                        <select
+                          className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm outline-none transition focus:border-pine"
+                          value={adminOrderFilters.employeeId}
+                          onChange={(event) =>
+                            setAdminOrderFilters((current) => ({
+                              ...current,
+                              employeeId: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">全部員工</option>
+                          {employees.map((employee) => (
+                            <option key={employee.id} value={employee.id}>
+                              #{employee.id} {employee.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm text-ink/65">
+                          可依日期與員工過濾，列表會顯示供應商與建立者資訊。
+                        </div>
+                      </div>
+                      <div className="mt-6 grid gap-4">
+                        {adminOrders.length ? (
+                          adminOrders.map((order) => (
+                            <div key={order.id} className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-ink">
+                                    {order.employeeName} / {order.menuName}
+                                  </p>
+                                  <p className="mt-1 text-sm text-ink/65">
+                                    訂餐日期 {formatDate(order.orderDate)} / 供應商 {order.supplierName}
+                                  </p>
+                                  <p className="text-sm text-ink/55">價格 NT${order.menuPrice}</p>
+                                </div>
+                                <span className="rounded-full bg-white px-3 py-1 text-xs text-ink/65">
+                                  #{order.employeeId}
+                                </span>
+                              </div>
+                              <div className="mt-3 text-sm text-ink/60">
+                                <p>建立者 {order.createdByName ?? "員工自助"}</p>
+                                <p>建立時間 {formatDateTime(order.createdAt)}</p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
+                            目前查無符合條件的員工訂單
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  </div>
+                ) : null}
+
+                {activeTab === "admin-suppliers" ? (
+                  <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
+                      <div className="space-y-8">
+                        <section className="space-y-4">
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Suppliers</p>
+                            <h3 className="mt-3 text-xl font-semibold">供應商管理</h3>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-[1fr_140px_auto]">
                             <input
-                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
-                              value={editing.name ?? ""}
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="輸入供應商名稱"
+                              value={supplierFilters.name}
                               onChange={(event) =>
-                                setEditingMenus((current) => ({
+                                setSupplierFilters((current) => ({ ...current, name: event.target.value }))
+                              }
+                            />
+                            <select
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              value={supplierFilters.searchType}
+                              onChange={(event) =>
+                                setSupplierFilters((current) => ({
                                   ...current,
-                                  [menu.id]: {
-                                    ...editing,
-                                    name: event.target.value,
-                                  },
+                                  searchType: event.target.value as "exact" | "fuzzy",
+                                }))
+                              }
+                            >
+                              <option value="exact">精確查詢</option>
+                              <option value="fuzzy">模糊查詢</option>
+                            </select>
+                            <div className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm text-ink/65">
+                              共 {suppliers.length} 筆
+                            </div>
+                          </div>
+                          <div className="grid gap-3">
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="供應商名稱"
+                              value={supplierForm.name}
+                              onChange={(event) =>
+                                setSupplierForm((current) => ({ ...current, name: event.target.value }))
+                              }
+                            />
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="通知 Email"
+                              value={supplierForm.email}
+                              onChange={(event) =>
+                                setSupplierForm((current) => ({ ...current, email: event.target.value }))
+                              }
+                            />
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="聯繫電話"
+                              value={supplierForm.phone}
+                              onChange={(event) =>
+                                setSupplierForm((current) => ({ ...current, phone: event.target.value }))
+                              }
+                            />
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="負責人"
+                              value={supplierForm.contactPerson}
+                              onChange={(event) =>
+                                setSupplierForm((current) => ({
+                                  ...current,
+                                  contactPerson: event.target.value,
                                 }))
                               }
                             />
                             <input
-                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
-                              value={String(editing.supplierId ?? "")}
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="營業登記編號"
+                              value={supplierForm.businessRegistrationNo}
                               onChange={(event) =>
-                                setEditingMenus((current) => ({
+                                setSupplierForm((current) => ({
                                   ...current,
-                                  [menu.id]: {
-                                    ...editing,
-                                    supplierId: Number(event.target.value),
-                                  },
+                                  businessRegistrationNo: event.target.value,
                                 }))
                               }
                             />
                           </div>
-                          <div className="grid gap-3 sm:grid-cols-3">
-                            <select
-                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
-                              value={editing.category ?? ""}
+                          <button
+                            className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void submitCreateSupplier()}
+                            type="button"
+                            disabled={loading}
+                          >
+                            建立供應商
+                          </button>
+                          <div className="grid gap-3">
+                            {suppliers.length ? (
+                              suppliers.map((supplier) => (
+                                <button
+                                  key={supplier.id}
+                                  className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-left transition hover:border-pine"
+                                  onClick={() => void loadSupplierDetail(supplier.id)}
+                                  type="button"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="font-medium text-ink">{supplier.name}</p>
+                                      <p className="mt-1 text-sm text-ink/65">{supplier.email}</p>
+                                      <p className="text-xs text-ink/45">
+                                        #{supplier.id} / {supplier.contactPerson}
+                                      </p>
+                                    </div>
+                                    <span
+                                      className={`rounded-full px-3 py-1 text-xs ${
+                                        supplier.isActive
+                                          ? "bg-emerald-100 text-emerald-700"
+                                          : "bg-zinc-200 text-zinc-700"
+                                      }`}
+                                    >
+                                      {supplier.isActive ? "啟用中" : "已停用"}
+                                    </span>
+                                  </div>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
+                                目前查無符合條件的供應商
+                              </div>
+                            )}
+                          </div>
+                        </section>
+
+                        <section className="space-y-4">
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Menus</p>
+                            <h3 className="mt-3 text-xl font-semibold">建立菜單</h3>
+                          </div>
+                          <div className="grid gap-3">
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="供應商 ID"
+                              value={menuForm.supplierId}
                               onChange={(event) =>
-                                setEditingMenus((current) => ({
-                                  ...current,
-                                  [menu.id]: {
-                                    ...editing,
-                                    category: event.target.value,
-                                  },
-                                }))
+                                setMenuForm((current) => ({ ...current, supplierId: event.target.value }))
+                              }
+                            />
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="便當名稱"
+                              value={menuForm.name}
+                              onChange={(event) =>
+                                setMenuForm((current) => ({ ...current, name: event.target.value }))
+                              }
+                            />
+                            <select
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              value={menuForm.category}
+                              onChange={(event) =>
+                                setMenuForm((current) => ({ ...current, category: event.target.value }))
                               }
                             >
                               {CATEGORY_OPTIONS.map((category) => (
@@ -1647,479 +1839,634 @@ export default function App() {
                                 </option>
                               ))}
                             </select>
-                            <input
-                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
-                              value={String(editing.price ?? "")}
+                            <textarea
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="說明"
+                              value={menuForm.description}
                               onChange={(event) =>
-                                setEditingMenus((current) => ({
-                                  ...current,
-                                  [menu.id]: {
-                                    ...editing,
-                                    price: Number(event.target.value),
-                                  },
-                                }))
-                              }
-                            />
-                            <p className="self-center text-xs text-ink/50">
-                              更新時間 {formatDateTime(menu.updatedAt)}
-                            </p>
-                          </div>
-                          <textarea
-                            className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
-                            value={editing.description ?? ""}
-                            onChange={(event) =>
-                              setEditingMenus((current) => ({
-                                ...current,
-                                [menu.id]: {
-                                  ...editing,
-                                  description: event.target.value,
-                                },
-                              }))
-                            }
-                          />
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <input
-                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
-                              type="date"
-                              value={editing.validFrom ?? ""}
-                              onChange={(event) =>
-                                setEditingMenus((current) => ({
-                                  ...current,
-                                  [menu.id]: {
-                                    ...editing,
-                                    validFrom: event.target.value,
-                                  },
-                                }))
+                                setMenuForm((current) => ({ ...current, description: event.target.value }))
                               }
                             />
                             <input
-                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
-                              type="date"
-                              value={editing.validTo ?? ""}
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="價格"
+                              value={menuForm.price}
                               onChange={(event) =>
-                                setEditingMenus((current) => ({
-                                  ...current,
-                                  [menu.id]: {
-                                    ...editing,
-                                    validTo: event.target.value,
-                                  },
-                                }))
+                                setMenuForm((current) => ({ ...current, price: event.target.value }))
                               }
                             />
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <input
+                                className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                                type="date"
+                                value={menuForm.validFrom}
+                                onChange={(event) =>
+                                  setMenuForm((current) => ({ ...current, validFrom: event.target.value }))
+                                }
+                              />
+                              <input
+                                className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                                type="date"
+                                value={menuForm.validTo}
+                                onChange={(event) =>
+                                  setMenuForm((current) => ({ ...current, validTo: event.target.value }))
+                                }
+                              />
+                            </div>
                           </div>
                           <button
-                            className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white"
-                            onClick={() => void submitUpdateMenu(menu.id)}
+                            className="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void submitCreateMenu()}
                             type="button"
                             disabled={loading}
                           >
-                            更新菜單
+                            建立菜單
                           </button>
+                        </section>
+                      </div>
+                    </article>
+
+                    <div className="grid gap-6">
+                      <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Menu List</p>
+                            <h3 className="mt-3 text-xl font-semibold">菜單清單</h3>
+                          </div>
+                          <label className="flex items-center gap-2 text-sm text-ink/70">
+                            <input
+                              checked={includeHistory}
+                              onChange={(event) => setIncludeHistory(event.target.checked)}
+                              type="checkbox"
+                            />
+                            顯示歷史菜單
+                          </label>
                         </div>
-                      </div>
-                    );
-                  })}
-                  {!menus.length ? (
-                    <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
-                      目前尚無菜單資料
-                    </div>
-                  ) : null}
-                </div>
-              </article>
-            </div>
-
-            <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Admin Orders</p>
-                  <h3 className="mt-3 text-xl font-semibold">員工訂單總覽</h3>
-                </div>
-                <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
-                  {adminOrders.length} 筆
-                </span>
-              </div>
-
-              <div className="mt-6 grid gap-4 lg:grid-cols-[0.8fr_0.8fr_1.4fr]">
-                <input
-                  className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm outline-none transition focus:border-pine"
-                  type="date"
-                  value={adminOrderFilters.date}
-                  onChange={(event) =>
-                    setAdminOrderFilters((current) => ({
-                      ...current,
-                      date: event.target.value,
-                    }))
-                  }
-                />
-                <select
-                  className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm outline-none transition focus:border-pine"
-                  value={adminOrderFilters.employeeId}
-                  onChange={(event) =>
-                    setAdminOrderFilters((current) => ({
-                      ...current,
-                      employeeId: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="">全部員工</option>
-                  {employees.map((employee) => (
-                    <option key={employee.id} value={employee.id}>
-                      #{employee.id} {employee.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm text-ink/65">
-                  可依日期與員工過濾，列表會顯示供應商與建立者資訊。
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-4">
-                {adminOrders.length ? (
-                  adminOrders.map((order) => (
-                    <div
-                      key={order.id}
-                      className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-ink">
-                            {order.employeeName} / {order.menuName}
-                          </p>
-                          <p className="mt-1 text-sm text-ink/65">
-                            訂餐日期 {formatDate(order.orderDate)} / 供應商 {order.supplierName}
-                          </p>
-                          <p className="text-sm text-ink/55">價格 NT${order.menuPrice}</p>
+                        <div className="mt-6 grid gap-4">
+                          {menus.map((menu) => {
+                            const editing = editingMenus[menu.id] ?? menu;
+                            return (
+                              <div key={menu.id} className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
+                                <div className="grid gap-3">
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <input
+                                      className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
+                                      value={editing.name ?? ""}
+                                      onChange={(event) =>
+                                        setEditingMenus((current) => ({
+                                          ...current,
+                                          [menu.id]: { ...editing, name: event.target.value },
+                                        }))
+                                      }
+                                    />
+                                    <input
+                                      className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
+                                      value={String(editing.supplierId ?? "")}
+                                      onChange={(event) =>
+                                        setEditingMenus((current) => ({
+                                          ...current,
+                                          [menu.id]: { ...editing, supplierId: Number(event.target.value) },
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="grid gap-3 sm:grid-cols-3">
+                                    <select
+                                      className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
+                                      value={editing.category ?? ""}
+                                      onChange={(event) =>
+                                        setEditingMenus((current) => ({
+                                          ...current,
+                                          [menu.id]: { ...editing, category: event.target.value },
+                                        }))
+                                      }
+                                    >
+                                      {CATEGORY_OPTIONS.map((category) => (
+                                        <option key={category} value={category}>
+                                          {category}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
+                                      value={String(editing.price ?? "")}
+                                      onChange={(event) =>
+                                        setEditingMenus((current) => ({
+                                          ...current,
+                                          [menu.id]: { ...editing, price: Number(event.target.value) },
+                                        }))
+                                      }
+                                    />
+                                    <p className="self-center text-xs text-ink/50">
+                                      更新時間 {formatDateTime(menu.updatedAt)}
+                                    </p>
+                                  </div>
+                                  <textarea
+                                    className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
+                                    value={editing.description ?? ""}
+                                    onChange={(event) =>
+                                      setEditingMenus((current) => ({
+                                        ...current,
+                                        [menu.id]: { ...editing, description: event.target.value },
+                                      }))
+                                    }
+                                  />
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <input
+                                      className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
+                                      type="date"
+                                      value={editing.validFrom ?? ""}
+                                      onChange={(event) =>
+                                        setEditingMenus((current) => ({
+                                          ...current,
+                                          [menu.id]: { ...editing, validFrom: event.target.value },
+                                        }))
+                                      }
+                                    />
+                                    <input
+                                      className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
+                                      type="date"
+                                      value={editing.validTo ?? ""}
+                                      onChange={(event) =>
+                                        setEditingMenus((current) => ({
+                                          ...current,
+                                          [menu.id]: { ...editing, validTo: event.target.value },
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                  <button
+                                    className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white"
+                                    onClick={() => void submitUpdateMenu(menu.id)}
+                                    type="button"
+                                    disabled={loading}
+                                  >
+                                    更新菜單
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {!menus.length ? (
+                            <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
+                              目前尚無菜單資料
+                            </div>
+                          ) : null}
                         </div>
-                        <span className="rounded-full bg-white px-3 py-1 text-xs text-ink/65">
-                          #{order.employeeId}
-                        </span>
-                      </div>
-                      <div className="mt-3 text-sm text-ink/60">
-                        <p>建立者 {order.createdByName ?? "員工自助"}</p>
-                        <p>建立時間 {formatDateTime(order.createdAt)}</p>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
-                    目前查無符合條件的員工訂單
-                  </div>
-                )}
-              </div>
-            </article>
+                      </article>
 
-            <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Supplier Detail</p>
-                  <h3 className="mt-3 text-xl font-semibold">供應商詳細資料與編輯</h3>
-                </div>
-                <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
-                  {selectedSupplier ? `#${selectedSupplier.id}` : "未選取"}
-                </span>
-              </div>
-
-              {selectedSupplier ? (
-                <div className="mt-6 grid gap-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="grid gap-2 text-sm text-ink/70">
-                      供應商 ID
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-[#f3efe7] px-4 py-3 text-sm text-ink/60"
-                        value={supplierDetailForm.id}
-                        disabled
-                      />
-                    </label>
-                    <label className="grid gap-2 text-sm text-ink/70">
-                      營業登記編號
-                      <input
-                        className="rounded-2xl border border-ink/10 bg-[#f3efe7] px-4 py-3 text-sm text-ink/60"
-                        value={supplierDetailForm.businessRegistrationNo}
-                        disabled
-                      />
-                    </label>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <input
-                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
-                      value={supplierDetailForm.name}
-                      onChange={(event) =>
-                        setSupplierDetailForm((current) => ({ ...current, name: event.target.value }))
-                      }
-                    />
-                    <input
-                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
-                      value={supplierDetailForm.email}
-                      onChange={(event) =>
-                        setSupplierDetailForm((current) => ({ ...current, email: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <input
-                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
-                      value={supplierDetailForm.phone}
-                      onChange={(event) =>
-                        setSupplierDetailForm((current) => ({ ...current, phone: event.target.value }))
-                      }
-                    />
-                    <input
-                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
-                      value={supplierDetailForm.contactPerson}
-                      onChange={(event) =>
-                        setSupplierDetailForm((current) => ({
-                          ...current,
-                          contactPerson: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <label className="flex items-center gap-3 text-sm text-ink/70">
-                    <input
-                      checked={supplierDetailForm.isActive}
-                      onChange={(event) =>
-                        setSupplierDetailForm((current) => ({
-                          ...current,
-                          isActive: event.target.checked,
-                        }))
-                      }
-                      type="checkbox"
-                    />
-                    供應商啟用中
-                  </label>
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                    唯讀欄位：`id` 與 `business_registration_no` 僅供顯示，不可修改。
-                  </div>
-                  <button
-                    className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    onClick={() => void submitUpdateSupplier()}
-                    type="button"
-                    disabled={loading}
-                  >
-                    更新供應商資料
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-6 rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
-                  請先從左側供應商清單選取一筆資料以載入詳細內容。
-                </div>
-              )}
-            </article>
-
-            <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Billing Logs</p>
-                  <h3 className="mt-3 text-xl font-semibold">月結發送記錄</h3>
-                </div>
-                <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
-                  {monthlyBillingLogs.length} 筆
-                </span>
-              </div>
-
-              <div className="mt-6 grid gap-4">
-                {monthlyBillingLogs.length ? (
-                  monthlyBillingLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-ink">{log.supplierName}</p>
-                          <p className="mt-1 text-sm text-ink/65">
-                            期間 {formatDate(log.billingPeriodStart)} - {formatDate(log.billingPeriodEnd)}
-                          </p>
-                          <p className="text-sm text-ink/55">收件者 {log.emailTo}</p>
+                      <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Supplier Detail</p>
+                            <h3 className="mt-3 text-xl font-semibold">供應商詳細資料與編輯</h3>
+                          </div>
+                          <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                            {selectedSupplier ? `#${selectedSupplier.id}` : "未選取"}
+                          </span>
                         </div>
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-medium ${
-                            log.status === "sent"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {log.status}
-                        </span>
-                      </div>
-                      <div className="mt-3 text-sm text-ink/60">
-                        <p>觸發者 {log.triggeredBy ? `#${log.triggeredBy}` : "系統排程"}</p>
-                        <p>建立時間 {formatDateTime(log.createdAt)}</p>
-                        {log.sentAt ? <p>寄送時間 {formatDateTime(log.sentAt)}</p> : null}
-                        {log.errorMessage ? <p className="text-red-700">錯誤：{log.errorMessage}</p> : null}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
-                    目前尚無月結發送記錄
-                  </div>
-                )}
-              </div>
-            </article>
-
-            <article className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-float backdrop-blur sm:p-8">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Employees</p>
-                  <h3 className="mt-3 text-xl font-semibold">員工清單</h3>
-                </div>
-                <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
-                  {employees.length} 人
-                </span>
-              </div>
-
-              <div className="mt-6 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-                <section className="space-y-6 rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Create</p>
-                    <h4 className="mt-2 text-lg font-semibold">新增員工帳號</h4>
-                  </div>
-                  <div className="grid gap-3">
-                    <input
-                      className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                      placeholder="username"
-                      value={createForm.username}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({ ...current, username: event.target.value }))
-                      }
-                    />
-                    <input
-                      className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                      placeholder="姓名"
-                      value={createForm.name}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({ ...current, name: event.target.value }))
-                      }
-                    />
-                    <input
-                      className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                      placeholder="Email"
-                      value={createForm.email}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({ ...current, email: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <button
-                    className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    onClick={() => void submitCreateEmployee()}
-                    type="button"
-                    disabled={loading}
-                  >
-                    建立員工
-                  </button>
-                  {createResult ? (
-                    <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-emerald-700">
-                      初始密碼: {createResult.generatedPassword}
-                    </div>
-                  ) : null}
-
-                  <div className="border-t border-ink/10 pt-6">
-                    <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Import</p>
-                    <h4 className="mt-2 text-lg font-semibold">CSV 批次匯入</h4>
-                    <input
-                      className="mt-4 block w-full text-sm text-ink/70"
-                      type="file"
-                      accept=".csv,text/csv"
-                      onChange={(event) => setSelectedFile(event.target.files?.item(0) ?? null)}
-                    />
-                    <button
-                      className="mt-4 rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => void submitImportEmployees()}
-                      type="button"
-                      disabled={loading}
-                    >
-                      上傳 CSV
-                    </button>
-                    {importResult ? (
-                      <div className="mt-4 rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/80">
-                        成功 {importResult.successCount} 筆，失敗 {importResult.failureCount} 筆
-                      </div>
-                    ) : null}
-                  </div>
-                </section>
-
-                <section className="grid gap-4">
-                  {employees.map((employee) => (
-                    <div
-                      key={employee.id}
-                      className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                          <div className="flex items-center gap-3">
-                            <h4 className="text-lg font-medium">{employee.name}</h4>
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs ${
-                                employee.isActive
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-zinc-200 text-zinc-700"
-                              }`}
+                        {selectedSupplier ? (
+                          <div className="mt-6 grid gap-4">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <label className="grid gap-2 text-sm text-ink/70">
+                                供應商 ID
+                                <input
+                                  className="rounded-2xl border border-ink/10 bg-[#f3efe7] px-4 py-3 text-sm text-ink/60"
+                                  value={supplierDetailForm.id}
+                                  disabled
+                                />
+                              </label>
+                              <label className="grid gap-2 text-sm text-ink/70">
+                                營業登記編號
+                                <input
+                                  className="rounded-2xl border border-ink/10 bg-[#f3efe7] px-4 py-3 text-sm text-ink/60"
+                                  value={supplierDetailForm.businessRegistrationNo}
+                                  disabled
+                                />
+                              </label>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <input
+                                className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                                value={supplierDetailForm.name}
+                                onChange={(event) =>
+                                  setSupplierDetailForm((current) => ({ ...current, name: event.target.value }))
+                                }
+                              />
+                              <input
+                                className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                                value={supplierDetailForm.email}
+                                onChange={(event) =>
+                                  setSupplierDetailForm((current) => ({ ...current, email: event.target.value }))
+                                }
+                              />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <input
+                                className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                                value={supplierDetailForm.phone}
+                                onChange={(event) =>
+                                  setSupplierDetailForm((current) => ({ ...current, phone: event.target.value }))
+                                }
+                              />
+                              <input
+                                className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                                value={supplierDetailForm.contactPerson}
+                                onChange={(event) =>
+                                  setSupplierDetailForm((current) => ({
+                                    ...current,
+                                    contactPerson: event.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                            <label className="flex items-center gap-3 text-sm text-ink/70">
+                              <input
+                                checked={supplierDetailForm.isActive}
+                                onChange={(event) =>
+                                  setSupplierDetailForm((current) => ({
+                                    ...current,
+                                    isActive: event.target.checked,
+                                  }))
+                                }
+                                type="checkbox"
+                              />
+                              供應商啟用中
+                            </label>
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+                              唯讀欄位：`id` 與 `business_registration_no` 僅供顯示，不可修改。
+                            </div>
+                            <button
+                              className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => void submitUpdateSupplier()}
+                              type="button"
+                              disabled={loading}
                             >
-                              {employee.isActive ? "啟用中" : "已停用"}
-                            </span>
-                            {employee.isAdmin ? (
-                              <span className="rounded-full bg-pine/10 px-3 py-1 text-xs text-pine">
-                                Admin
-                              </span>
+                              更新供應商資料
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-6 rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
+                            請先從左側供應商清單選取一筆資料以載入詳細內容。
+                          </div>
+                        )}
+                      </article>
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeTab === "admin-reports" ? (
+                  <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
+                      <div className="space-y-8">
+                        <section className="space-y-4">
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Monthly Billing</p>
+                            <h3 className="mt-3 text-xl font-semibold">月結報表</h3>
+                            <p className="mt-2 text-sm leading-7 text-ink/65">
+                              手動重跑當期月結報表，會寄給供應商信箱與 A008 報表收件清單。
+                            </p>
+                          </div>
+                          <button
+                            className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void submitMonthlyBillingTrigger()}
+                            type="button"
+                            disabled={loading}
+                          >
+                            手動觸發月結報表
+                          </button>
+                        </section>
+
+                        <section className="space-y-4">
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Report Recipients</p>
+                            <h3 className="mt-3 text-xl font-semibold">月結報表收件信箱</h3>
+                          </div>
+                          <div className="flex gap-3">
+                            <input
+                              className="flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="finance-reports@company.local"
+                              value={reportEmailForm.email}
+                              onChange={(event) => setReportEmailForm({ email: event.target.value })}
+                            />
+                            <button
+                              className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => void submitCreateReportEmail()}
+                              type="button"
+                              disabled={loading}
+                            >
+                              新增
+                            </button>
+                          </div>
+                          <div className="grid gap-3">
+                            {reportEmails.length ? (
+                              reportEmails.map((entry) => (
+                                <div
+                                  key={entry.id}
+                                  className="flex items-center justify-between gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-4"
+                                >
+                                  <div>
+                                    <p className="font-medium text-ink">{entry.email}</p>
+                                    <p className="mt-1 text-xs text-ink/45">
+                                      建立者 #{entry.createdBy} / {formatDateTime(entry.createdAt)}
+                                    </p>
+                                  </div>
+                                  <button
+                                    className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                                    onClick={() => confirmDeleteReportEmail(entry.id)}
+                                    type="button"
+                                    disabled={loading}
+                                  >
+                                    刪除
+                                  </button>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
+                                目前尚未設定報表收件信箱
+                              </div>
+                            )}
+                          </div>
+                        </section>
+                      </div>
+                    </article>
+
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                      <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Billing Logs</p>
+                          <h3 className="mt-3 text-xl font-semibold">月結發送記錄</h3>
+                        </div>
+                        <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                          {monthlyBillingLogs.length} 筆
+                        </span>
+                      </div>
+                      <div className="mt-6 grid gap-4">
+                        {monthlyBillingLogs.length ? (
+                          monthlyBillingLogs.map((log) => (
+                            <div key={log.id} className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-ink">{log.supplierName}</p>
+                                  <p className="mt-1 text-sm text-ink/65">
+                                    期間 {formatDate(log.billingPeriodStart)} - {formatDate(log.billingPeriodEnd)}
+                                  </p>
+                                  <p className="text-sm text-ink/55">收件者 {log.emailTo}</p>
+                                </div>
+                                <span
+                                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                                    log.status === "sent"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : "bg-red-100 text-red-700"
+                                  }`}
+                                >
+                                  {log.status}
+                                </span>
+                              </div>
+                              <div className="mt-3 text-sm text-ink/60">
+                                <p>觸發者 {log.triggeredBy ? `#${log.triggeredBy}` : "系統排程"}</p>
+                                <p>建立時間 {formatDateTime(log.createdAt)}</p>
+                                {log.sentAt ? <p>寄送時間 {formatDateTime(log.sentAt)}</p> : null}
+                                {log.errorMessage ? <p className="text-red-700">錯誤：{log.errorMessage}</p> : null}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
+                            目前尚無月結發送記錄
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  </div>
+                ) : null}
+
+                {activeTab === "admin-settings" ? (
+                  <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
+                      <div className="space-y-8">
+                        <section className="space-y-4">
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Settings</p>
+                            <h3 className="mt-3 text-xl font-semibold">錯誤通知信箱</h3>
+                            <p className="mt-2 text-sm leading-7 text-ink/65">
+                              A003 供應商通知排程失敗時，會直接讀取這份收件清單。
+                            </p>
+                          </div>
+                          <div className="flex gap-3">
+                            <input
+                              className="flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="ops-alerts@company.local"
+                              value={errorEmailForm.email}
+                              onChange={(event) => setErrorEmailForm({ email: event.target.value })}
+                            />
+                            <button
+                              className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => void submitCreateErrorEmail()}
+                              type="button"
+                              disabled={loading}
+                            >
+                              新增
+                            </button>
+                          </div>
+                          <div className="grid gap-3">
+                            {errorEmails.length ? (
+                              errorEmails.map((entry) => (
+                                <div
+                                  key={entry.id}
+                                  className="flex items-center justify-between gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-4"
+                                >
+                                  <div>
+                                    <p className="font-medium text-ink">{entry.email}</p>
+                                    <p className="mt-1 text-xs text-ink/45">
+                                      建立者 #{entry.createdBy} / {formatDateTime(entry.createdAt)}
+                                    </p>
+                                  </div>
+                                  <button
+                                    className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                                    onClick={() => confirmDeleteErrorEmail(entry.id)}
+                                    type="button"
+                                    disabled={loading}
+                                  >
+                                    刪除
+                                  </button>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
+                                目前尚未設定錯誤通知信箱
+                              </div>
+                            )}
+                          </div>
+                        </section>
+
+                        <section className="space-y-6 rounded-[1.5rem] border border-ink/10 bg-white p-5">
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Create</p>
+                            <h4 className="mt-2 text-lg font-semibold">新增員工帳號</h4>
+                          </div>
+                          <div className="grid gap-3">
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="username"
+                              value={createForm.username}
+                              onChange={(event) =>
+                                setCreateForm((current) => ({ ...current, username: event.target.value }))
+                              }
+                            />
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="姓名"
+                              value={createForm.name}
+                              onChange={(event) =>
+                                setCreateForm((current) => ({ ...current, name: event.target.value }))
+                              }
+                            />
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="Email"
+                              value={createForm.email}
+                              onChange={(event) =>
+                                setCreateForm((current) => ({ ...current, email: event.target.value }))
+                              }
+                            />
+                          </div>
+                          <button
+                            className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void submitCreateEmployee()}
+                            type="button"
+                            disabled={loading}
+                          >
+                            建立員工
+                          </button>
+                          {createResult ? (
+                            <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-emerald-700">
+                              初始密碼: {createResult.generatedPassword}
+                            </div>
+                          ) : null}
+
+                          <div className="border-t border-ink/10 pt-6">
+                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Import</p>
+                            <h4 className="mt-2 text-lg font-semibold">CSV 批次匯入</h4>
+                            <input
+                              className="mt-4 block w-full text-sm text-ink/70"
+                              type="file"
+                              accept=".csv,text/csv"
+                              onChange={(event) => setSelectedFile(event.target.files?.item(0) ?? null)}
+                            />
+                            <button
+                              className="mt-4 rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => void submitImportEmployees()}
+                              type="button"
+                              disabled={loading}
+                            >
+                              上傳 CSV
+                            </button>
+                            {importResult ? (
+                              <div className="mt-4 rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-4 text-sm text-ink/80">
+                                成功 {importResult.successCount} 筆，失敗 {importResult.failureCount} 筆
+                              </div>
                             ) : null}
                           </div>
-                          <p className="mt-2 text-sm text-ink/65">{employee.username}</p>
-                          <p className="text-sm text-ink/65">{employee.email}</p>
-                          <p className="mt-2 text-xs text-ink/45">
-                            更新時間 {formatDateTime(employee.updatedAt)}
-                          </p>
-                        </div>
-                        <button
-                          className="rounded-full border border-ink/10 px-4 py-2 text-sm"
-                          onClick={() => void toggleEmployeeStatus(employee)}
-                          type="button"
-                        >
-                          {employee.isActive ? "停用" : "啟用"}
-                        </button>
+                        </section>
                       </div>
-                      {!employee.isAdmin ? (
-                        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                          <input
-                            className="min-w-0 flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
-                            placeholder="輸入新密碼"
-                            type="password"
-                            value={resetForms[employee.id] ?? ""}
-                            onChange={(event) =>
-                              setResetForms((current) => ({
-                                ...current,
-                                [employee.id]: event.target.value,
-                              }))
-                            }
-                          />
-                          <button
-                            className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white"
-                            onClick={() => void submitResetPassword(employee.id)}
-                            type="button"
-                          >
-                            重設密碼
-                          </button>
+                    </article>
+
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Employees</p>
+                          <h3 className="mt-3 text-xl font-semibold">員工清單</h3>
+                        </div>
+                        <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                          {employees.length} 人
+                        </span>
+                      </div>
+                      <div className="mt-6 grid gap-4">
+                        {employees.map((employee) => (
+                          <div key={employee.id} className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
+                            <div className="flex flex-wrap items-start justify-between gap-4">
+                              <div>
+                                <div className="flex items-center gap-3">
+                                  <h4 className="text-lg font-medium">{employee.name}</h4>
+                                  <span
+                                    className={`rounded-full px-3 py-1 text-xs ${
+                                      employee.isActive
+                                        ? "bg-emerald-100 text-emerald-700"
+                                        : "bg-zinc-200 text-zinc-700"
+                                    }`}
+                                  >
+                                    {employee.isActive ? "啟用中" : "已停用"}
+                                  </span>
+                                  {employee.isAdmin ? (
+                                    <span className="rounded-full bg-pine/10 px-3 py-1 text-xs text-pine">
+                                      Admin
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="mt-2 text-sm text-ink/65">{employee.username}</p>
+                                <p className="text-sm text-ink/65">{employee.email}</p>
+                                <p className="mt-2 text-xs text-ink/45">
+                                  更新時間 {formatDateTime(employee.updatedAt)}
+                                </p>
+                              </div>
+                              <button
+                                className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                                onClick={() => confirmToggleEmployeeStatus(employee)}
+                                type="button"
+                              >
+                                {employee.isActive ? "停用" : "啟用"}
+                              </button>
+                            </div>
+                            {!employee.isAdmin ? (
+                              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                                <input
+                                  className="min-w-0 flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
+                                  placeholder="輸入新密碼"
+                                  type="password"
+                                  value={resetForms[employee.id] ?? ""}
+                                  onChange={(event) =>
+                                    setResetForms((current) => ({
+                                      ...current,
+                                      [employee.id]: event.target.value,
+                                    }))
+                                  }
+                                />
+                                <button
+                                  className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white"
+                                  onClick={() => void submitResetPassword(employee.id)}
+                                  type="button"
+                                >
+                                  重設密碼
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                      {importResult?.errors.length ? (
+                        <div className="mt-6 rounded-[1.5rem] border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+                          {importResult.errors.map((entry) => (
+                            <p key={`${entry.lineNumber}-${entry.rawData}`}>
+                              第 {entry.lineNumber} 行: {entry.reason}
+                            </p>
+                          ))}
                         </div>
                       ) : null}
-                    </div>
-                  ))}
-                </section>
+                    </article>
+                  </div>
+                ) : null}
               </div>
-
-              {importResult?.errors.length ? (
-                <div className="mt-6 rounded-[1.5rem] border border-red-100 bg-red-50 p-4 text-sm text-red-700">
-                  {importResult.errors.map((entry) => (
-                    <p key={`${entry.lineNumber}-${entry.rawData}`}>
-                      第 {entry.lineNumber} 行: {entry.reason}
-                    </p>
-                  ))}
-                </div>
-              ) : null}
-            </article>
+            </PanelCard>
           </section>
         ) : null}
       </div>
+      <MessageBox
+        state={messageBox}
+        busy={messageBoxBusy}
+        onClose={closeMessageBox}
+        onConfirm={handleMessageBoxConfirm}
+      />
     </main>
   );
 }

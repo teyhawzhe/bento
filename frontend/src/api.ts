@@ -21,9 +21,19 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api",
 });
 
-export function login(role: "employee" | "admin", payload: LoginRequest) {
-  const path = role === "admin" ? "/admin/auth/login" : "/auth/login";
-  return api.post<LoginResponse>(path, payload);
+export async function login(payload: LoginRequest) {
+  try {
+    return await api.post<LoginResponse>("/auth/login", payload);
+  } catch (unknownError) {
+    if (
+      axios.isAxiosError(unknownError) &&
+      unknownError.response?.status === 403 &&
+      unknownError.response?.data?.message === "請使用管理員登入入口"
+    ) {
+      return api.post<LoginResponse>("/admin/auth/login", payload);
+    }
+    throw unknownError;
+  }
 }
 
 export function forgotPassword(email: string) {
