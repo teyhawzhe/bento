@@ -2,12 +2,13 @@ package com.lovius.bento.controller;
 
 import com.lovius.bento.dto.AdminOrderResponse;
 import com.lovius.bento.dto.CreateAdminOrderRequest;
+import com.lovius.bento.dto.EmployeeMenuCatalogResponse;
+import com.lovius.bento.dto.EmployeeMenuOptionResponse;
 import com.lovius.bento.dto.OrderResponse;
 import com.lovius.bento.dto.SupplierResponse;
 import com.lovius.bento.exception.GlobalExceptionHandler;
 import com.lovius.bento.security.AuthenticatedUser;
 import com.lovius.bento.service.MenuService;
-import com.lovius.bento.service.OrderDeadlineService;
 import com.lovius.bento.service.OrderService;
 import com.lovius.bento.service.SupplierService;
 import com.lovius.bento.service.TokenService;
@@ -44,8 +45,26 @@ class A002ControllerTest {
     @MockBean
     private TokenService tokenService;
 
-    @MockBean
-    private OrderDeadlineService orderDeadlineService;
+    @Test
+    void getEmployeeMenusReturnsOrderableDatesAndMenus() throws Exception {
+        Mockito.when(tokenService.parseToken("Bearer employee-token"))
+                .thenReturn(new AuthenticatedUser(2L, "alice", "employee"));
+        Mockito.when(menuService.getEmployeeMenuCatalogForEmployee()).thenReturn(new EmployeeMenuCatalogResponse(
+                List.of(LocalDate.of(2026, 3, 24), LocalDate.of(2026, 3, 25)),
+                List.of(new EmployeeMenuOptionResponse(
+                        20L,
+                        "香烤雞腿便當",
+                        "肉類",
+                        "附三樣配菜",
+                        LocalDate.of(2026, 3, 24),
+                        LocalDate.of(2026, 3, 31)))));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/orders/menu")
+                        .header("Authorization", "Bearer employee-token"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.orderableDates[0]").value("2026-03-24"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.menus[0].name").value("香烤雞腿便當"));
+    }
 
     @Test
     void getAdminOrdersRequiresAdmin() throws Exception {

@@ -2,7 +2,7 @@ import axios from "axios";
 import type {
   AdminOrder,
   ApiMessageResponse,
-  EmployeeMenuOption,
+  EmployeeMenuCatalog,
   EmployeeCreatedResponse,
   EmployeeSummary,
   ErrorEmail,
@@ -118,7 +118,7 @@ export function resetEmployeePassword(token: string, employeeId: number, newPass
 }
 
 export function getEmployeeMenus(token: string) {
-  return api.get<EmployeeMenuOption[]>("/orders/menu", {
+  return api.get<EmployeeMenuCatalog>("/orders/menu", {
     headers: {
       Authorization: `Bearer ${token}`,
     },

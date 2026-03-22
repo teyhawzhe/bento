@@ -19,53 +19,90 @@ class OrderDeadlineServiceTest {
     private static final ZoneId ZONE_ID = ZoneId.of("Asia/Taipei");
 
     @Test
-    void nextWeekdaysReturnsUpcomingMondayToFriday() {
+    void employeeOrderableDatesStartAfterUpcomingFridayDeadline() {
         OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-23T09:00:00+08:00"));
 
-        List<LocalDate> weekdays = service.nextWeekdays();
+        List<LocalDate> orderableDates = service.employeeOrderableDates();
 
         assertEquals(List.of(
+                LocalDate.of(2026, 3, 28),
+                LocalDate.of(2026, 3, 29),
                 LocalDate.of(2026, 3, 30),
                 LocalDate.of(2026, 3, 31),
                 LocalDate.of(2026, 4, 1),
                 LocalDate.of(2026, 4, 2),
-                LocalDate.of(2026, 4, 3)), weekdays);
+                LocalDate.of(2026, 4, 3)), orderableDates);
     }
 
     @Test
-    void employeeOrderWindowOpenBeforeFridayNoon() {
-        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-27T11:59:00+08:00"));
-
-        assertDoesNotThrow(service::ensureEmployeeOrderWindowOpen);
-        assertTrue(service.isEmployeeOrderWindowOpen());
-    }
-
-    @Test
-    void employeeOrderWindowClosedAtFridayNoon() {
+    void employeeOrderableDatesRollForwardAfterFridayNoon() {
         OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-27T12:00:00+08:00"));
 
-        ApiException exception = assertThrows(ApiException.class, service::ensureEmployeeOrderWindowOpen);
+        List<LocalDate> orderableDates = service.employeeOrderableDates();
 
-        assertEquals("已超過訂餐截止時間", exception.getMessage());
-        assertFalse(service.isEmployeeOrderWindowOpen());
+        assertEquals(LocalDate.of(2026, 4, 4), orderableDates.get(0));
+        assertEquals(LocalDate.of(2026, 4, 10), orderableDates.get(orderableDates.size() - 1));
     }
 
     @Test
-    void adminCancellationWindowOpenBeforePreviousDayFivePm() {
-        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T16:59:00+08:00"));
+    void employeeOrderableDateAllowsCurrentCycleDate() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-23T16:59:00+08:00"));
+
+        assertDoesNotThrow(() -> service.ensureEmployeeOrderableDate(LocalDate.of(2026, 3, 30)));
+    }
+
+    @Test
+    void employeeOrderableDateRejectsDateBeforeCurrentCycle() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-23T09:00:00+08:00"));
+
+        ApiException exception = assertThrows(
+                ApiException.class,
+                () -> service.ensureEmployeeOrderableDate(LocalDate.of(2026, 3, 23)));
+
+        assertEquals("僅可訂購本次開放區間（截止日後至下週五）的便當", exception.getMessage());
+    }
+
+    @Test
+    void employeeOrderableDateAllowsWeekendWhenInCurrentCycle() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-23T09:00:00+08:00"));
+
+        assertDoesNotThrow(() -> service.ensureEmployeeOrderableDate(LocalDate.of(2026, 3, 28)));
+    }
+
+    @Test
+    void adminCancellationWindowOpenBeforePreviousDayFourThirtyPm() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T16:29:00+08:00"));
 
         assertDoesNotThrow(() -> service.ensureAdminCancellationWindowOpen(LocalDate.of(2026, 4, 1)));
     }
 
     @Test
-    void adminCancellationWindowClosedAtPreviousDayFivePm() {
-        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T17:00:00+08:00"));
+    void employeeCancellationWindowOpenBeforePreviousDayFourThirtyPm() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T16:29:00+08:00"));
+
+        assertDoesNotThrow(() -> service.ensureEmployeeCancellationWindowOpen(LocalDate.of(2026, 4, 1)));
+    }
+
+    @Test
+    void adminCancellationWindowClosedAtPreviousDayFourThirtyPm() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T16:30:00+08:00"));
 
         ApiException exception = assertThrows(
                 ApiException.class,
                 () -> service.ensureAdminCancellationWindowOpen(LocalDate.of(2026, 4, 1)));
 
         assertEquals("已超過管理員取消訂餐截止時間", exception.getMessage());
+    }
+
+    @Test
+    void employeeCancellationWindowClosedAtPreviousDayFourThirtyPm() {
+        OrderDeadlineService service = new OrderDeadlineService(fixedClock("2026-03-31T16:30:00+08:00"));
+
+        ApiException exception = assertThrows(
+                ApiException.class,
+                () -> service.ensureEmployeeCancellationWindowOpen(LocalDate.of(2026, 4, 1)));
+
+        assertEquals("已超過取消訂餐截止時間", exception.getMessage());
     }
 
     @Test

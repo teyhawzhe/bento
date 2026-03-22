@@ -6,7 +6,7 @@ import com.lovius.bento.dto.CreateAdminOrderRequest;
 import com.lovius.bento.dto.CreateMenuRequest;
 import com.lovius.bento.dto.CreateOrderRequest;
 import com.lovius.bento.dto.CreateSupplierRequest;
-import com.lovius.bento.dto.EmployeeMenuOptionResponse;
+import com.lovius.bento.dto.EmployeeMenuCatalogResponse;
 import com.lovius.bento.dto.MenuResponse;
 import com.lovius.bento.dto.OrderResponse;
 import com.lovius.bento.dto.SupplierResponse;
@@ -16,7 +16,6 @@ import com.lovius.bento.dto.UpdateOrderRequest;
 import com.lovius.bento.exception.ApiException;
 import com.lovius.bento.security.AuthenticatedUser;
 import com.lovius.bento.service.MenuService;
-import com.lovius.bento.service.OrderDeadlineService;
 import com.lovius.bento.service.OrderService;
 import com.lovius.bento.service.SupplierService;
 import com.lovius.bento.service.TokenService;
@@ -45,31 +44,23 @@ public class A002Controller {
     private final OrderService orderService;
     private final SupplierService supplierService;
     private final TokenService tokenService;
-    private final OrderDeadlineService orderDeadlineService;
 
     public A002Controller(
             MenuService menuService,
             OrderService orderService,
             SupplierService supplierService,
-            TokenService tokenService,
-            OrderDeadlineService orderDeadlineService) {
+            TokenService tokenService) {
         this.menuService = menuService;
         this.orderService = orderService;
         this.supplierService = supplierService;
         this.tokenService = tokenService;
-        this.orderDeadlineService = orderDeadlineService;
     }
 
     @GetMapping("/orders/menu")
-    public ResponseEntity<?> getNextWeekMenus(
+    public EmployeeMenuCatalogResponse getNextWeekMenus(
             @RequestHeader("Authorization") String authorizationHeader) {
         requireRole(authorizationHeader, "employee");
-        if (!orderDeadlineService.isEmployeeOrderWindowOpen()) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(new ApiMessageResponse("本週訂餐已截止，僅可查看個人訂餐記錄"));
-        }
-        List<EmployeeMenuOptionResponse> menus = menuService.getNextWeekMenusForEmployee();
-        return ResponseEntity.ok(menus);
+        return menuService.getEmployeeMenuCatalogForEmployee();
     }
 
     @PostMapping("/orders")

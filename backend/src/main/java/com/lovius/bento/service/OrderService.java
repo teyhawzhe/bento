@@ -38,7 +38,6 @@ public class OrderService {
     }
 
     public OrderResponse createOrReplaceOrder(AuthenticatedUser user, CreateOrderRequest request) {
-        orderDeadlineService.ensureEmployeeOrderWindowOpen();
         validateOrderDate(request.orderDate());
         Menu menu = validateMenuForDate(request.menuId(), request.orderDate());
         BentoOrder order = orderRepository.findByEmployeeIdAndOrderDate(user.employeeId(), request.orderDate())
@@ -67,10 +66,10 @@ public class OrderService {
     }
 
     public OrderResponse updateOrder(AuthenticatedUser user, Long orderId, UpdateOrderRequest request) {
-        orderDeadlineService.ensureEmployeeOrderWindowOpen();
         BentoOrder order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "查無訂單"));
         ensureOwner(user, order);
+        validateOrderDate(order.getOrderDate());
         Menu menu = validateMenuForDate(request.menuId(), order.getOrderDate());
         BentoOrder updated = new BentoOrder(
                 order.getId(),
@@ -84,10 +83,10 @@ public class OrderService {
     }
 
     public void cancelOwnOrder(AuthenticatedUser user, Long orderId) {
-        orderDeadlineService.ensureEmployeeOrderWindowOpen();
         BentoOrder order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "查無訂單"));
         ensureOwner(user, order);
+        orderDeadlineService.ensureEmployeeCancellationWindowOpen(order.getOrderDate());
         orderRepository.deleteById(orderId);
     }
 
@@ -133,9 +132,7 @@ public class OrderService {
     }
 
     private void validateOrderDate(LocalDate orderDate) {
-        if (!orderDeadlineService.isOrderDateWithinNextWeekdays(orderDate)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "僅可訂購下週工作日便當");
-        }
+        orderDeadlineService.ensureEmployeeOrderableDate(orderDate);
     }
 
     private Menu validateMenuForDate(Long menuId, LocalDate orderDate) {

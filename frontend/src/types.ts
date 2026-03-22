@@ -124,6 +124,11 @@ export interface EmployeeMenuOption {
   validTo: string;
 }
 
+export interface EmployeeMenuCatalog {
+  orderableDates: string[];
+  menus: EmployeeMenuOption[];
+}
+
 export interface Order {
   id: number;
   employeeId: number;

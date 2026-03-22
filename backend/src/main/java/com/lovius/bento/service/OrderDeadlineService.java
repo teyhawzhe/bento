@@ -27,40 +27,30 @@ public class OrderDeadlineService {
         this.clock = clock;
     }
 
-    public List<LocalDate> nextWeekdays() {
-        LocalDate today = ZonedDateTime.now(clock).toLocalDate();
-        LocalDate nextMonday = today.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
-        List<LocalDate> weekdays = new ArrayList<>();
-        for (int offset = 0; offset < 5; offset++) {
-            weekdays.add(nextMonday.plusDays(offset));
+    public List<LocalDate> employeeOrderableDates() {
+        LocalDate rangeStart = employeeOrderRangeStart();
+        LocalDate rangeEnd = employeeOrderRangeEnd();
+        List<LocalDate> orderableDates = new ArrayList<>();
+        for (LocalDate date = rangeStart; !date.isAfter(rangeEnd); date = date.plusDays(1)) {
+            orderableDates.add(date);
         }
-        return weekdays;
+        return orderableDates;
     }
 
-    public boolean isOrderDateWithinNextWeekdays(LocalDate orderDate) {
-        return nextWeekdays().contains(orderDate);
-    }
-
-    public void ensureEmployeeOrderWindowOpen() {
-        ZonedDateTime now = ZonedDateTime.now(clock);
-        LocalDate friday = now.toLocalDate().with(TemporalAdjusters.nextOrSame(DayOfWeek.FRIDAY));
-        ZonedDateTime deadline = ZonedDateTime.of(friday, LocalTime.NOON, ZONE_ID);
-        if (!now.isBefore(deadline)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "已超過訂餐截止時間");
-        }
-    }
-
-    public boolean isEmployeeOrderWindowOpen() {
-        try {
-            ensureEmployeeOrderWindowOpen();
-            return true;
-        } catch (ApiException exception) {
-            return false;
+    public void ensureEmployeeOrderableDate(LocalDate orderDate) {
+        LocalDate rangeStart = employeeOrderRangeStart();
+        LocalDate rangeEnd = employeeOrderRangeEnd();
+        if (orderDate.isBefore(rangeStart) || orderDate.isAfter(rangeEnd)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "僅可訂購本次開放區間（截止日後至下週五）的便當");
         }
     }
 
     public void ensureAdminCancellationWindowOpen(LocalDate orderDate) {
-        ensureAdminWindowOpen(orderDate, "已超過管理員取消訂餐截止時間");
+        ensureCancellationWindowOpen(orderDate, "已超過管理員取消訂餐截止時間");
+    }
+
+    public void ensureEmployeeCancellationWindowOpen(LocalDate orderDate) {
+        ensureCancellationWindowOpen(orderDate, "已超過取消訂餐截止時間");
     }
 
     public void ensureAdminOrderDateIsTomorrow(LocalDate orderDate) {
@@ -74,8 +64,39 @@ public class OrderDeadlineService {
         ensureAdminWindowOpen(orderDate, "已超過代訂截止時間");
     }
 
+    public ZonedDateTime employeeOrderDeadline() {
+        ZonedDateTime now = now();
+        LocalDate friday = now.toLocalDate().with(TemporalAdjusters.nextOrSame(DayOfWeek.FRIDAY));
+        ZonedDateTime deadline = ZonedDateTime.of(friday, LocalTime.NOON, ZONE_ID);
+        if (!now.isBefore(deadline)) {
+            return deadline.plusWeeks(1);
+        }
+        return deadline;
+    }
+
+    public LocalDate employeeOrderRangeStart() {
+        return employeeOrderDeadline().toLocalDate().plusDays(1);
+    }
+
+    public LocalDate employeeOrderRangeEnd() {
+        return employeeOrderDeadline().toLocalDate().plusDays(7);
+    }
+
+    private ZonedDateTime now() {
+        return ZonedDateTime.now(clock);
+    }
+
+    private void ensureCancellationWindowOpen(LocalDate orderDate, String message) {
+        ZonedDateTime now = now();
+        LocalDateTime cutoffDateTime = LocalDateTime.of(orderDate.minusDays(1), LocalTime.of(16, 30));
+        ZonedDateTime cutoff = ZonedDateTime.of(cutoffDateTime, ZONE_ID);
+        if (!now.isBefore(cutoff)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, message);
+        }
+    }
+
     private void ensureAdminWindowOpen(LocalDate orderDate, String message) {
-        ZonedDateTime now = ZonedDateTime.now(clock);
+        ZonedDateTime now = now();
         LocalDateTime cutoffDateTime = LocalDateTime.of(orderDate.minusDays(1), LocalTime.of(17, 0));
         ZonedDateTime cutoff = ZonedDateTime.of(cutoffDateTime, ZONE_ID);
         if (!now.isBefore(cutoff)) {

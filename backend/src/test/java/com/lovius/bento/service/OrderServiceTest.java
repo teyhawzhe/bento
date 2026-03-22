@@ -3,6 +3,7 @@ package com.lovius.bento.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -56,7 +57,6 @@ class OrderServiceTest {
         Menu menu = menu(20L, orderDate, orderDate.plusDays(4));
         BentoOrder existingOrder = new BentoOrder(99L, 1L, 10L, orderDate, 1L, Instant.parse("2026-03-24T01:00:00Z"));
 
-        when(orderDeadlineService.isOrderDateWithinNextWeekdays(orderDate)).thenReturn(true);
         when(orderRepository.findByEmployeeIdAndOrderDate(1L, orderDate)).thenReturn(Optional.of(existingOrder));
         when(menuService.getRequiredMenu(20L)).thenReturn(menu);
         when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee()));
@@ -71,17 +71,19 @@ class OrderServiceTest {
     }
 
     @Test
-    void createOrderRejectsDateOutsideNextWeekdays() {
+    void createOrderRejectsDateOutsideCurrentOpenRange() {
         AuthenticatedUser user = new AuthenticatedUser(1L, "alice", "employee");
         LocalDate invalidDate = LocalDate.of(2026, 4, 10);
 
-        when(orderDeadlineService.isOrderDateWithinNextWeekdays(invalidDate)).thenReturn(false);
+        doThrow(new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "僅可訂購本次開放區間（截止日後至下週五）的便當"))
+                .when(orderDeadlineService)
+                .ensureEmployeeOrderableDate(invalidDate);
 
         ApiException exception = assertThrows(
                 ApiException.class,
                 () -> orderService.createOrReplaceOrder(user, new CreateOrderRequest(20L, invalidDate)));
 
-        assertEquals("僅可訂購下週工作日便當", exception.getMessage());
+        assertEquals("僅可訂購本次開放區間（截止日後至下週五）的便當", exception.getMessage());
         verify(orderRepository, never()).save(any());
     }
 
@@ -99,6 +101,20 @@ class OrderServiceTest {
     }
 
     @Test
+    void cancelOwnOrderUsesEmployeeCancellationDeadline() {
+        AuthenticatedUser user = new AuthenticatedUser(1L, "alice", "employee");
+        LocalDate orderDate = LocalDate.of(2026, 4, 1);
+        BentoOrder order = new BentoOrder(99L, 1L, 10L, orderDate, 1L, Instant.now());
+
+        when(orderRepository.findById(99L)).thenReturn(Optional.of(order));
+
+        orderService.cancelOwnOrder(user, 99L);
+
+        verify(orderDeadlineService).ensureEmployeeCancellationWindowOpen(orderDate);
+        verify(orderRepository).deleteById(99L);
+    }
+
+    @Test
     void adminCancelUsesConfiguredOrderDateDeadline() {
         LocalDate orderDate = LocalDate.of(2026, 4, 1);
         BentoOrder order = new BentoOrder(88L, 1L, 10L, orderDate, 1L, Instant.now());
@@ -109,6 +125,23 @@ class OrderServiceTest {
 
         verify(orderDeadlineService).ensureAdminCancellationWindowOpen(orderDate);
         verify(orderRepository).deleteById(88L);
+    }
+
+    @Test
+    void updateOrderUsesEmployeeOrderableRangeValidation() {
+        AuthenticatedUser user = new AuthenticatedUser(1L, "alice", "employee");
+        LocalDate orderDate = LocalDate.of(2026, 3, 30);
+        BentoOrder order = new BentoOrder(99L, 1L, 10L, orderDate, 1L, Instant.now());
+        Menu menu = menu(20L, orderDate, orderDate.plusDays(2));
+
+        when(orderRepository.findById(99L)).thenReturn(Optional.of(order));
+        when(menuService.getRequiredMenu(20L)).thenReturn(menu);
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee()));
+
+        orderService.updateOrder(user, 99L, new com.lovius.bento.dto.UpdateOrderRequest(20L));
+
+        verify(orderDeadlineService).ensureEmployeeOrderableDate(orderDate);
+        verify(orderRepository).save(any(BentoOrder.class));
     }
 
     @Test

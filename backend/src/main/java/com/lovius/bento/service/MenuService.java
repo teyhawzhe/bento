@@ -3,6 +3,7 @@ package com.lovius.bento.service;
 import com.lovius.bento.dao.MenuRepository;
 import com.lovius.bento.dao.SupplierRepository;
 import com.lovius.bento.dto.CreateMenuRequest;
+import com.lovius.bento.dto.EmployeeMenuCatalogResponse;
 import com.lovius.bento.dto.EmployeeMenuOptionResponse;
 import com.lovius.bento.dto.MenuResponse;
 import com.lovius.bento.dto.UpdateMenuRequest;
@@ -10,6 +11,7 @@ import com.lovius.bento.exception.ApiException;
 import com.lovius.bento.model.Menu;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -30,16 +32,23 @@ public class MenuService {
         this.orderDeadlineService = orderDeadlineService;
     }
 
-    public List<EmployeeMenuOptionResponse> getNextWeekMenusForEmployee() {
+    public EmployeeMenuCatalogResponse getEmployeeMenuCatalogForEmployee() {
         LinkedHashMap<Long, Menu> uniqueMenus = new LinkedHashMap<>();
-        orderDeadlineService.nextWeekdays()
-                .stream()
-                .flatMap(date -> menuRepository.findAvailableForDate(date).stream())
-                .forEach(menu -> uniqueMenus.putIfAbsent(menu.getId(), menu));
-        return uniqueMenus.values()
+        List<LocalDate> orderableDates = new ArrayList<>();
+        for (LocalDate date : orderDeadlineService.employeeOrderableDates()) {
+            List<Menu> availableMenus = menuRepository.findAvailableForDate(date);
+            if (availableMenus.isEmpty()) {
+                continue;
+            }
+            orderableDates.add(date);
+            availableMenus.forEach(menu -> uniqueMenus.putIfAbsent(menu.getId(), menu));
+        }
+        return new EmployeeMenuCatalogResponse(
+                orderableDates,
+                uniqueMenus.values()
                 .stream()
                 .map(this::toEmployeeResponse)
-                .toList();
+                .toList());
     }
 
     public List<MenuResponse> getMenus(boolean includeHistory) {

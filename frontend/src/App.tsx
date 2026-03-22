@@ -172,6 +172,20 @@ function nextWeekdays() {
   return days;
 }
 
+function employeeMenusForDate(menus: EmployeeMenuOption[], orderDate: string) {
+  return menus.filter((menu) => menu.validFrom <= orderDate && orderDate <= menu.validTo);
+}
+
+function employeeOrderCancellationDeadline(orderDate: string) {
+  const cutoff = new Date(`${orderDate}T16:30:00`);
+  cutoff.setDate(cutoff.getDate() - 1);
+  return cutoff;
+}
+
+function canCancelEmployeeOrder(orderDate: string, currentTime: Date) {
+  return currentTime < employeeOrderCancellationDeadline(orderDate);
+}
+
 function defaultTabForRole(role: UserRole): AppTabId {
   return role === "admin" ? "admin-orders" : "employee-ordering";
 }
@@ -306,6 +320,7 @@ export default function App() {
 
   const [employees, setEmployees] = useState<EmployeeSummary[]>([]);
   const [employeeMenus, setEmployeeMenus] = useState<EmployeeMenuOption[]>([]);
+  const [employeeOrderDates, setEmployeeOrderDates] = useState<string[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -325,7 +340,7 @@ export default function App() {
   const [createForm, setCreateForm] = useState({ username: "", name: "", email: "" });
   const [resetForms, setResetForms] = useState<Record<number, string>>({});
   const [orderForm, setOrderForm] = useState({
-    orderDate: nextWeekdays()[0] ?? "",
+    orderDate: "",
     menuId: "",
   });
   const [supplierForm, setSupplierForm] = useState({
@@ -418,6 +433,37 @@ export default function App() {
       }));
     }
   }, [adminOrderForm.employeeId, employees, session]);
+
+  useEffect(() => {
+    if (session?.role !== "employee") {
+      return;
+    }
+
+    setOrderForm((current) => {
+      const nextOrderDate = employeeOrderDates.includes(current.orderDate)
+        ? current.orderDate
+        : (employeeOrderDates[0] ?? "");
+      const availableMenus = employeeMenusForDate(employeeMenus, nextOrderDate);
+      const existingOrder = orders.find((entry) => entry.orderDate === nextOrderDate);
+      const preferredMenuId = existingOrder
+        ? String(existingOrder.menuId)
+        : availableMenus[0]
+          ? String(availableMenus[0].id)
+          : "";
+      const nextMenuId = availableMenus.some((menu) => String(menu.id) === current.menuId)
+        ? current.menuId
+        : preferredMenuId;
+
+      if (current.orderDate === nextOrderDate && current.menuId === nextMenuId) {
+        return current;
+      }
+
+      return {
+        orderDate: nextOrderDate,
+        menuId: nextMenuId,
+      };
+    });
+  }, [employeeMenus, employeeOrderDates, orders, session]);
 
   useEffect(() => {
     setActiveTab(defaultTabForRole(session?.role ?? "employee"));
@@ -520,29 +566,50 @@ export default function App() {
   }
 
   async function loadEmployeeData(token: string) {
+    let nextOrders: Order[] = [];
     try {
       const [ordersResponse] = await Promise.all([getMyOrders(token)]);
-      setOrders(ordersResponse.data);
+      nextOrders = ordersResponse.data;
+      setOrders(nextOrders);
     } catch (unknownError) {
       handleHttpError(unknownError, "訂餐記錄讀取失敗");
     }
 
     try {
       const response = await getEmployeeMenus(token);
-      setEmployeeMenus(response.data);
-      setDeadlineMessage("");
-      if (!orderForm.menuId && response.data[0]) {
-        setOrderForm((current) => ({
-          ...current,
-          menuId: String(response.data[0].id),
-        }));
-      }
+      setEmployeeMenus(response.data.menus);
+      setEmployeeOrderDates(response.data.orderableDates);
+      setDeadlineMessage(
+        response.data.orderableDates.length
+          ? ""
+          : "目前沒有可訂日期。員工可訂本次截止日後到下週五區間內、且仍在菜單有效期間內的便當。",
+      );
+      setOrderForm((current) => {
+        const nextOrderDate = response.data.orderableDates.includes(current.orderDate)
+          ? current.orderDate
+          : (response.data.orderableDates[0] ?? "");
+        const availableMenus = employeeMenusForDate(response.data.menus, nextOrderDate);
+        const existingOrder = nextOrders.find((entry) => entry.orderDate === nextOrderDate);
+        const preferredMenuId = existingOrder
+          ? String(existingOrder.menuId)
+          : availableMenus[0]
+            ? String(availableMenus[0].id)
+            : "";
+        const nextMenuId = availableMenus.some((menu) => String(menu.id) === current.menuId)
+          ? current.menuId
+          : preferredMenuId;
+        return {
+          orderDate: nextOrderDate,
+          menuId: nextMenuId,
+        };
+      });
     } catch (unknownError) {
       setEmployeeMenus([]);
+      setEmployeeOrderDates([]);
       if (axios.isAxiosError(unknownError)) {
-        setDeadlineMessage(unknownError.response?.data?.message ?? "本週訂餐已截止");
+        setDeadlineMessage(unknownError.response?.data?.message ?? "可訂日期讀取失敗");
       } else {
-        setDeadlineMessage("本週訂餐已截止");
+        setDeadlineMessage("可訂日期讀取失敗");
       }
     }
   }
@@ -790,8 +857,13 @@ export default function App() {
     }
   }
 
-  async function submitCancelOrder(orderId: number) {
+  async function submitCancelOrder(orderId: number, orderDate: string) {
     if (!session) {
+      return;
+    }
+    if (!canCancelEmployeeOrder(orderDate, currentTime)) {
+      closeMessageBox();
+      openErrorBox("已超過取消訂餐截止時間");
       return;
     }
     setLoading(true);
@@ -1135,8 +1207,16 @@ export default function App() {
     }
   }
 
-  function confirmCancelOrder(orderId: number) {
-    openConfirmBox("確定要取消這筆訂單嗎？", async () => submitCancelOrder(orderId), "取消訂單");
+  function confirmCancelOrder(orderId: number, orderDate: string) {
+    if (!canCancelEmployeeOrder(orderDate, currentTime)) {
+      openErrorBox("已超過取消訂餐截止時間");
+      return;
+    }
+    openConfirmBox(
+      "確定要取消這筆訂單嗎？",
+      async () => submitCancelOrder(orderId, orderDate),
+      "取消訂單",
+    );
   }
 
   function confirmDeleteErrorEmail(id: number) {
@@ -1178,6 +1258,7 @@ export default function App() {
     setEmployees([]);
     setEmployeeMenus([]);
     setOrders([]);
+    setEmployeeOrderDates([]);
     setMenus([]);
     setSuppliers([]);
     setErrorEmails([]);
@@ -1198,6 +1279,7 @@ export default function App() {
 
   const currentTabs = session ? tabsForRole(session.role) : [];
   const selectedOrder = orders.find((entry) => entry.orderDate === orderForm.orderDate);
+  const availableEmployeeMenus = employeeMenusForDate(employeeMenus, orderForm.orderDate);
   const availableAdminMenus = menus.filter(
     (menu) => menu.validFrom <= adminOrderForm.orderDate && adminOrderForm.orderDate <= menu.validTo,
   );
@@ -1376,7 +1458,7 @@ export default function App() {
                                   setOrderForm((current) => ({ ...current, orderDate: event.target.value }))
                                 }
                               >
-                                {nextWeekdays().map((day) => (
+                                {employeeOrderDates.map((day) => (
                                   <option key={day} value={day}>
                                     {formatDateWithWeekday(day)}
                                   </option>
@@ -1392,7 +1474,7 @@ export default function App() {
                                   setOrderForm((current) => ({ ...current, menuId: event.target.value }))
                                 }
                               >
-                                {employeeMenus.map((menu) => (
+                                {availableEmployeeMenus.map((menu) => (
                                   <option key={menu.id} value={menu.id}>
                                     {menu.name} / {menu.category}
                                   </option>
@@ -1401,8 +1483,13 @@ export default function App() {
                             </label>
                           </div>
                           <div className="rounded-[1.5rem] bg-[#171717] p-5 text-sm leading-7 text-white/80">
-                            員工端不顯示價格資訊。若同一天已經下單，送出後會以最新選擇覆蓋舊訂單。
+                            員工端不顯示價格資訊。可訂日期為本次星期五 12:00 截止後到下週五的區間，週末若有設定菜單也可訂；若同一天已經下單，送出後會以最新選擇覆蓋舊訂單。
                           </div>
+                          {!availableEmployeeMenus.length ? (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                              目前選定日期尚無可訂便當選項，請改選其他日期。
+                            </div>
+                          ) : null}
                           {selectedOrder ? (
                             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                               {formatDateWithWeekday(selectedOrder.orderDate)} 已有訂單，目前為 {selectedOrder.menuName}
@@ -1412,7 +1499,7 @@ export default function App() {
                             className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => void submitOrder()}
                             type="button"
-                            disabled={loading || !orderForm.menuId}
+                            disabled={loading || !orderForm.menuId || !orderForm.orderDate}
                           >
                             {selectedOrder ? "更新當日訂單" : "送出訂餐"}
                           </button>
@@ -1425,7 +1512,7 @@ export default function App() {
                         <p className="text-sm uppercase tracking-[0.35em] text-clay/80">My Orders</p>
                         <h3 className="mt-3 text-xl font-semibold">我的訂單</h3>
                         <p className="mt-2 text-sm leading-7 text-ink/65">
-                          送出訂單後，右側會同步顯示目前個人訂單；取消操作仍會先跳出確認 MessageBox。
+                          送出訂單後，右側會同步顯示目前個人訂單；各筆訂單超過前一日 16:30 後會隱藏取消按鈕。
                         </p>
                       </div>
                       <div className="grid gap-3">
@@ -1439,17 +1526,22 @@ export default function App() {
                                     訂餐日期 {formatDateWithWeekday(order.orderDate)}
                                   </p>
                                   <p className="text-xs text-ink/45">
+                                    取消截止 {formatDateTime(employeeOrderCancellationDeadline(order.orderDate).toISOString())}
+                                  </p>
+                                  <p className="text-xs text-ink/45">
                                     建立時間 {formatDateTime(order.createdAt)}
                                   </p>
                                 </div>
-                                <button
-                                  className="rounded-full border border-ink/10 px-4 py-2 text-sm"
-                                  onClick={() => confirmCancelOrder(order.id)}
-                                  type="button"
-                                  disabled={loading}
-                                >
-                                  取消
-                                </button>
+                                {canCancelEmployeeOrder(order.orderDate, currentTime) ? (
+                                  <button
+                                    className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                                    onClick={() => confirmCancelOrder(order.id, order.orderDate)}
+                                    type="button"
+                                    disabled={loading}
+                                  >
+                                    取消
+                                  </button>
+                                ) : null}
                               </div>
                             </div>
                           ))
