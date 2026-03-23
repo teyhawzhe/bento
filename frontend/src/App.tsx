@@ -1,9 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
+﻿import { useEffect, useState, type ReactNode } from "react";
 import axios from "axios";
 import {
   cancelAdminOrder,
   cancelOrder,
   changePassword,
+  createDepartment,
   createAdminOrder,
   createEmployee,
   createErrorEmail,
@@ -15,6 +16,7 @@ import {
   deleteReportEmail,
   forgotPassword,
   getAdminOrders,
+  getDepartments,
   getEmployeeMenus,
   getEmployees,
   getErrorEmails,
@@ -27,8 +29,11 @@ import {
   importEmployees,
   login,
   logout as logoutRequest,
+  updateEmployee,
   resetEmployeePassword,
   triggerMonthlyBilling,
+  deleteDepartment,
+  updateDepartment,
   updateSupplier,
   updateEmployeeStatus,
   updateMenu,
@@ -36,6 +41,7 @@ import {
 } from "./api";
 import type {
   AdminOrder,
+  Department,
   EmployeeCreatedResponse,
   EmployeeMenuOption,
   EmployeeSummary,
@@ -69,6 +75,7 @@ const ADMIN_SUPPLIER_TABS = [
 const ADMIN_SETTINGS_TABS = [
   { id: "employee-create", label: "新增員工帳號" },
   { id: "employee-import", label: "CSV 匯入" },
+  { id: "department-management", label: "部門管理" },
 ] as const;
 
 type EmployeeTabId = (typeof EMPLOYEE_TABS)[number]["id"];
@@ -92,6 +99,14 @@ interface MessageBoxState {
   cancelLabel?: string;
   onConfirm?: (() => void | Promise<void>) | null;
   onCancel?: (() => void) | null;
+}
+
+interface EmployeeEditForm {
+  username: string;
+  name: string;
+  email: string;
+  departmentId: string;
+  isAdmin: boolean;
 }
 
 function readSession(): SessionUser | null {
@@ -350,6 +365,7 @@ export default function App() {
   const [employeeOrderDates, setEmployeeOrderDates] = useState<string[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [menus, setMenus] = useState<Menu[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierOptions, setSupplierOptions] = useState<Supplier[]>([]);
   const [supplierMenus, setSupplierMenus] = useState<Menu[]>([]);
@@ -366,7 +382,18 @@ export default function App() {
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [forgotEmail, setForgotEmail] = useState("");
   const [changeForm, setChangeForm] = useState({ oldPassword: "", newPassword: "" });
-  const [createForm, setCreateForm] = useState({ username: "", name: "", email: "" });
+  const [createForm, setCreateForm] = useState({
+    username: "",
+    name: "",
+    email: "",
+    departmentId: "",
+  });
+  const [departmentForm, setDepartmentForm] = useState({ name: "" });
+  const [editingDepartments, setEditingDepartments] = useState<
+    Record<number, { name: string; isActive: boolean }>
+  >({});
+  const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null);
+  const [editingEmployees, setEditingEmployees] = useState<Record<number, EmployeeEditForm>>({});
   const [resetForms, setResetForms] = useState<Record<number, string>>({});
   const [orderForm, setOrderForm] = useState({
     orderDate: "",
@@ -450,6 +477,59 @@ export default function App() {
       setSelectedMenuSupplierId("");
     }
   }, [selectedMenuSupplierId, supplierOptions]);
+
+  useEffect(() => {
+    if (session?.role !== "admin" || !departments.length) {
+      return;
+    }
+
+    const activeDepartments = departments.filter((department) => department.isActive);
+    if (!activeDepartments.length) {
+      if (createForm.departmentId) {
+        setCreateForm((current) => ({ ...current, departmentId: "" }));
+      }
+      return;
+    }
+
+    const selectedStillValid = activeDepartments.some(
+      (department) => String(department.id) === createForm.departmentId,
+    );
+    if (!selectedStillValid) {
+      setCreateForm((current) => ({
+        ...current,
+        departmentId: String(activeDepartments[0].id),
+      }));
+    }
+  }, [createForm.departmentId, departments, session]);
+
+  useEffect(() => {
+    setEditingDepartments((current) => {
+      const next: Record<number, { name: string; isActive: boolean }> = {};
+      for (const department of departments) {
+        next[department.id] = current[department.id] ?? {
+          name: department.name,
+          isActive: department.isActive,
+        };
+      }
+      return next;
+    });
+  }, [departments]);
+
+  useEffect(() => {
+    setEditingEmployees((current) => {
+      const next: Record<number, EmployeeEditForm> = {};
+      for (const employee of employees) {
+        next[employee.id] = current[employee.id] ?? {
+          username: employee.username,
+          name: employee.name,
+          email: employee.email,
+          departmentId: String(employee.department.id),
+          isAdmin: employee.isAdmin,
+        };
+      }
+      return next;
+    });
+  }, [employees]);
 
   useEffect(() => {
     if (session?.role !== "admin") {
@@ -677,6 +757,7 @@ export default function App() {
     try {
       const [
         employeesResponse,
+        departmentsResponse,
         menusResponse,
         errorEmailsResponse,
         reportEmailsResponse,
@@ -686,6 +767,7 @@ export default function App() {
         supplierOptionsResponse,
       ] = await Promise.all([
         getEmployees(token),
+        getDepartments(token),
         getMenus(token, history),
         getErrorEmails(token),
         getReportEmails(token),
@@ -702,6 +784,7 @@ export default function App() {
         getSuppliers(token, {}),
       ]);
       setEmployees(employeesResponse.data);
+      setDepartments(departmentsResponse.data);
       setMenus(menusResponse.data);
       setErrorEmails(errorEmailsResponse.data);
       setReportEmails(reportEmailsResponse.data);
@@ -817,19 +900,30 @@ export default function App() {
       return;
     }
     if (
-      !validateWarning("請完整填寫員工帳號、姓名與 Email。", [
+      !validateWarning("請完整填寫員工帳號、姓名、Email 與部門。", [
         !isBlank(createForm.username),
         !isBlank(createForm.name),
         !isBlank(createForm.email),
+        !isBlank(createForm.departmentId),
       ])
     ) {
       return;
     }
     setLoading(true);
     try {
-      const response = await createEmployee(session.token, createForm);
+      const response = await createEmployee(session.token, {
+        username: createForm.username,
+        name: createForm.name,
+        email: createForm.email,
+        departmentId: Number(createForm.departmentId),
+      });
       setCreateResult(response.data);
-      setCreateForm({ username: "", name: "", email: "" });
+      setCreateForm((current) => ({
+        username: "",
+        name: "",
+        email: "",
+        departmentId: current.departmentId,
+      }));
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
       openSuccessBox(response.data.message, "員工已建立");
     } catch (unknownError) {
@@ -857,6 +951,104 @@ export default function App() {
     }
   }
 
+  async function submitUpdateEmployee(employeeId: number) {
+    if (!session) {
+      return;
+    }
+
+    const draft = editingEmployees[employeeId];
+    if (
+      !draft ||
+      !validateWarning("請完整填寫員工資料後再儲存。", [
+        !isBlank(draft.username),
+        !isBlank(draft.name),
+        !isBlank(draft.email),
+        !isBlank(draft.departmentId),
+      ])
+    ) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await updateEmployee(session.token, employeeId, {
+        username: draft.username,
+        name: draft.name,
+        email: draft.email,
+        departmentId: Number(draft.departmentId),
+        isAdmin: draft.isAdmin,
+      });
+      setEditingEmployeeId(null);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox(response.data.message, "員工資料已更新");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "更新員工資料失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitCreateDepartment() {
+    if (!session) {
+      return;
+    }
+    if (!validateWarning("請輸入部門名稱。", [!isBlank(departmentForm.name)])) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await createDepartment(session.token, { name: departmentForm.name });
+      setDepartmentForm({ name: "" });
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox(`部門 ${response.data.name} 已建立。`, "部門建立成功");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "建立部門失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitUpdateDepartment(departmentId: number) {
+    if (!session) {
+      return;
+    }
+
+    const draft = editingDepartments[departmentId];
+    if (!draft || isBlank(draft.name)) {
+      openWarningBox("請輸入部門名稱。");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await updateDepartment(session.token, departmentId, draft);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox("部門資料已更新。", "部門更新成功");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "更新部門失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitDeleteDepartment(departmentId: number) {
+    if (!session) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await deleteDepartment(session.token, departmentId);
+      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      openSuccessBox("部門已刪除。", "部門刪除成功");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "刪除部門失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function toggleEmployeeStatus(employee: EmployeeSummary) {
     if (!session) {
       return;
@@ -871,6 +1063,34 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function startEditEmployee(employee: EmployeeSummary) {
+    setEditingEmployees((current) => ({
+      ...current,
+      [employee.id]: {
+        username: employee.username,
+        name: employee.name,
+        email: employee.email,
+        departmentId: String(employee.department.id),
+        isAdmin: employee.isAdmin,
+      },
+    }));
+    setEditingEmployeeId(employee.id);
+  }
+
+  function cancelEditEmployee(employee: EmployeeSummary) {
+    setEditingEmployees((current) => ({
+      ...current,
+      [employee.id]: {
+        username: employee.username,
+        name: employee.name,
+        email: employee.email,
+        departmentId: String(employee.department.id),
+        isAdmin: employee.isAdmin,
+      },
+    }));
+    setEditingEmployeeId(null);
   }
 
   async function submitResetPassword(employeeId: number) {
@@ -2625,6 +2845,25 @@ export default function App() {
                                     setCreateForm((current) => ({ ...current, email: event.target.value }))
                                   }
                                 />
+                                <select
+                                  className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
+                                  value={createForm.departmentId}
+                                  onChange={(event) =>
+                                    setCreateForm((current) => ({
+                                      ...current,
+                                      departmentId: event.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="">選擇部門</option>
+                                  {departments
+                                    .filter((department) => department.isActive)
+                                    .map((department) => (
+                                      <option key={department.id} value={department.id}>
+                                        {department.name}
+                                      </option>
+                                    ))}
+                                </select>
                               </div>
                               <button
                                 className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -2637,6 +2876,14 @@ export default function App() {
                               {createResult ? (
                                 <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-emerald-700">
                                   初始密碼: {createResult.generatedPassword}
+                                  <div className="mt-2 text-emerald-800">
+                                    部門: {createResult.employee.department.name}
+                                  </div>
+                                </div>
+                              ) : null}
+                              {!departments.filter((department) => department.isActive).length ? (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                  目前沒有可用部門，請先建立並啟用部門。
                                 </div>
                               ) : null}
                             </div>
@@ -2644,13 +2891,17 @@ export default function App() {
 
                           {adminSettingsTab === "employee-import" ? (
                             <div className="space-y-4">
-                              <div>
-                                <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Import</p>
-                                <h4 className="mt-2 text-lg font-semibold">CSV 批次匯入</h4>
-                              </div>
-                              <input
-                                className="block w-full text-sm text-ink/70"
-                                type="file"
+                                <div>
+                                  <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Import</p>
+                                  <h4 className="mt-2 text-lg font-semibold">CSV 批次匯入</h4>
+                                </div>
+                                <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-4 text-sm text-ink/70">
+                                  CSV 欄位格式為 `username,name,email,department`，其中 `department`
+                                  需對應部門名稱。
+                                </div>
+                                <input
+                                  className="block w-full text-sm text-ink/70"
+                                  type="file"
                                 accept=".csv,text/csv"
                                 onChange={(event) => setSelectedFile(event.target.files?.item(0) ?? null)}
                               />
@@ -2667,6 +2918,109 @@ export default function App() {
                                   成功 {importResult.successCount} 筆，失敗 {importResult.failureCount} 筆
                                 </div>
                               ) : null}
+                              </div>
+                            ) : null}
+
+                          {adminSettingsTab === "department-management" ? (
+                            <div className="space-y-5">
+                              <div>
+                                <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Departments</p>
+                                <h4 className="mt-2 text-lg font-semibold">部門管理</h4>
+                              </div>
+                              <div className="flex flex-col gap-3 sm:flex-row">
+                                <input
+                                  className="min-w-0 flex-1 rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
+                                  placeholder="新增部門名稱"
+                                  value={departmentForm.name}
+                                  onChange={(event) => setDepartmentForm({ name: event.target.value })}
+                                />
+                                <button
+                                  className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                  onClick={() => void submitCreateDepartment()}
+                                  type="button"
+                                  disabled={loading}
+                                >
+                                  建立部門
+                                </button>
+                              </div>
+                              <div className="grid gap-3">
+                                {departments.length ? (
+                                  departments.map((department) => {
+                                    const draft = editingDepartments[department.id] ?? {
+                                      name: department.name,
+                                      isActive: department.isActive,
+                                    };
+                                    return (
+                                      <div
+                                        key={department.id}
+                                        className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-4"
+                                      >
+                                        <div className="flex flex-wrap items-center gap-3">
+                                          <input
+                                            className="min-w-0 flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                                            value={draft.name}
+                                            onChange={(event) =>
+                                              setEditingDepartments((current) => ({
+                                                ...current,
+                                                [department.id]: {
+                                                  ...draft,
+                                                  name: event.target.value,
+                                                },
+                                              }))
+                                            }
+                                          />
+                                          <label className="flex items-center gap-2 text-sm text-ink/70">
+                                            <input
+                                              checked={draft.isActive}
+                                              type="checkbox"
+                                              onChange={(event) =>
+                                                setEditingDepartments((current) => ({
+                                                  ...current,
+                                                  [department.id]: {
+                                                    ...draft,
+                                                    isActive: event.target.checked,
+                                                  },
+                                                }))
+                                              }
+                                            />
+                                            啟用
+                                          </label>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                                          <p className="text-xs text-ink/45">
+                                            #{department.id}
+                                            {department.updatedAt
+                                              ? ` / 更新 ${formatDateTime(department.updatedAt)}`
+                                              : ""}
+                                          </p>
+                                          <div className="flex flex-wrap gap-2">
+                                            <button
+                                              className="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm"
+                                              onClick={() => void submitUpdateDepartment(department.id)}
+                                              type="button"
+                                              disabled={loading}
+                                            >
+                                              儲存
+                                            </button>
+                                            <button
+                                              className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                              onClick={() => void submitDeleteDepartment(department.id)}
+                                              type="button"
+                                              disabled={loading || !department.isActive}
+                                            >
+                                              刪除
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-4 text-sm text-ink/65">
+                                    目前沒有部門資料。
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           ) : null}
                         </section>
@@ -2684,66 +3038,204 @@ export default function App() {
                         </span>
                       </div>
                       <div className="mt-6 grid gap-4">
-                        {employees.map((employee) => (
-                          <div key={employee.id} className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
-                            <div className="flex flex-wrap items-start justify-between gap-4">
-                              <div>
-                                <div className="flex items-center gap-3">
-                                  <h4 className="text-lg font-medium">{employee.name}</h4>
-                                  <span
-                                    className={`rounded-full px-3 py-1 text-xs ${
-                                      employee.isActive
-                                        ? "bg-emerald-100 text-emerald-700"
-                                        : "bg-zinc-200 text-zinc-700"
-                                    }`}
-                                  >
-                                    {employee.isActive ? "啟用中" : "已停用"}
-                                  </span>
-                                  {employee.isAdmin ? (
-                                    <span className="rounded-full bg-pine/10 px-3 py-1 text-xs text-pine">
-                                      Admin
+                        {employees.map((employee) => {
+                          const isEditing = editingEmployeeId === employee.id;
+                          const draft = editingEmployees[employee.id] ?? {
+                            username: employee.username,
+                            name: employee.name,
+                            email: employee.email,
+                            departmentId: String(employee.department.id),
+                            isAdmin: employee.isAdmin,
+                          };
+
+                          return (
+                            <div key={employee.id} className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
+                              <div className="flex flex-wrap items-start justify-between gap-4">
+                                <div>
+                                  <div className="flex items-center gap-3">
+                                    <h4 className="text-lg font-medium">{employee.name}</h4>
+                                    <span
+                                      className={`rounded-full px-3 py-1 text-xs ${
+                                        employee.isActive
+                                          ? "bg-emerald-100 text-emerald-700"
+                                          : "bg-zinc-200 text-zinc-700"
+                                      }`}
+                                    >
+                                      {employee.isActive ? "啟用中" : "已停用"}
                                     </span>
-                                  ) : null}
+                                    {employee.isAdmin ? (
+                                      <span className="rounded-full bg-pine/10 px-3 py-1 text-xs text-pine">
+                                        Admin
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <p className="mt-2 text-sm text-ink/65">{employee.username}</p>
+                                  <p className="text-sm text-ink/65">{employee.email}</p>
+                                  <p className="text-sm text-ink/65">部門: {employee.department.name}</p>
+                                  <p className="text-sm text-ink/65">ID: {employee.id}</p>
+                                  <p className="mt-2 text-xs text-ink/45">
+                                    更新時間 {formatDateTime(employee.updatedAt)}
+                                  </p>
                                 </div>
-                                <p className="mt-2 text-sm text-ink/65">{employee.username}</p>
-                                <p className="text-sm text-ink/65">{employee.email}</p>
-                                <p className="mt-2 text-xs text-ink/45">
-                                  更新時間 {formatDateTime(employee.updatedAt)}
-                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                                    onClick={() =>
+                                      isEditing ? cancelEditEmployee(employee) : startEditEmployee(employee)
+                                    }
+                                    type="button"
+                                  >
+                                    {isEditing ? "取消編輯" : "編輯資料"}
+                                  </button>
+                                  <button
+                                    className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                                    onClick={() => confirmToggleEmployeeStatus(employee)}
+                                    type="button"
+                                  >
+                                    {employee.isActive ? "停用" : "啟用"}
+                                  </button>
+                                </div>
                               </div>
-                              <button
-                                className="rounded-full border border-ink/10 px-4 py-2 text-sm"
-                                onClick={() => confirmToggleEmployeeStatus(employee)}
-                                type="button"
-                              >
-                                {employee.isActive ? "停用" : "啟用"}
-                              </button>
+                              {isEditing ? (
+                                <div className="mt-4 grid gap-3 rounded-2xl border border-ink/10 bg-white p-4">
+                                  <label className="grid gap-2 text-sm text-ink/70">
+                                    員工 ID
+                                    <input
+                                      className="rounded-2xl border border-ink/10 bg-[#f3efe7] px-4 py-3 text-sm text-ink/60"
+                                      value={employee.id}
+                                      disabled
+                                    />
+                                  </label>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <input
+                                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                                      placeholder="username"
+                                      value={draft.username}
+                                      onChange={(event) =>
+                                        setEditingEmployees((current) => ({
+                                          ...current,
+                                          [employee.id]: {
+                                            ...draft,
+                                            username: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                    />
+                                    <input
+                                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                                      placeholder="姓名"
+                                      value={draft.name}
+                                      onChange={(event) =>
+                                        setEditingEmployees((current) => ({
+                                          ...current,
+                                          [employee.id]: {
+                                            ...draft,
+                                            name: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                  <input
+                                    className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                                    placeholder="Email"
+                                    value={draft.email}
+                                    onChange={(event) =>
+                                      setEditingEmployees((current) => ({
+                                        ...current,
+                                        [employee.id]: {
+                                          ...draft,
+                                          email: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                  />
+                                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                                    <select
+                                      className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                                      value={draft.departmentId}
+                                      onChange={(event) =>
+                                        setEditingEmployees((current) => ({
+                                          ...current,
+                                          [employee.id]: {
+                                            ...draft,
+                                            departmentId: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      <option value="">選擇部門</option>
+                                      {departments
+                                        .filter((department) => department.isActive)
+                                        .map((department) => (
+                                          <option key={department.id} value={department.id}>
+                                            {department.name}
+                                          </option>
+                                        ))}
+                                    </select>
+                                    <label className="flex items-center gap-2 text-sm text-ink/70">
+                                      <input
+                                        checked={draft.isAdmin}
+                                        type="checkbox"
+                                        onChange={(event) =>
+                                          setEditingEmployees((current) => ({
+                                            ...current,
+                                            [employee.id]: {
+                                              ...draft,
+                                              isAdmin: event.target.checked,
+                                            },
+                                          }))
+                                        }
+                                      />
+                                      管理員
+                                    </label>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                      onClick={() => void submitUpdateEmployee(employee.id)}
+                                      type="button"
+                                      disabled={loading}
+                                    >
+                                      儲存更新
+                                    </button>
+                                    <button
+                                      className="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-medium text-ink"
+                                      onClick={() => cancelEditEmployee(employee)}
+                                      type="button"
+                                      disabled={loading}
+                                    >
+                                      取消
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : null}
+                              {!employee.isAdmin ? (
+                                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                                  <input
+                                    className="min-w-0 flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
+                                    placeholder="輸入新密碼"
+                                    type="password"
+                                    value={resetForms[employee.id] ?? ""}
+                                    onChange={(event) =>
+                                      setResetForms((current) => ({
+                                        ...current,
+                                        [employee.id]: event.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <button
+                                    className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white"
+                                    onClick={() => void submitResetPassword(employee.id)}
+                                    type="button"
+                                  >
+                                    重設密碼
+                                  </button>
+                                </div>
+                              ) : null}
                             </div>
-                            {!employee.isAdmin ? (
-                              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                                <input
-                                  className="min-w-0 flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine"
-                                  placeholder="輸入新密碼"
-                                  type="password"
-                                  value={resetForms[employee.id] ?? ""}
-                                  onChange={(event) =>
-                                    setResetForms((current) => ({
-                                      ...current,
-                                      [employee.id]: event.target.value,
-                                    }))
-                                  }
-                                />
-                                <button
-                                  className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white"
-                                  onClick={() => void submitResetPassword(employee.id)}
-                                  type="button"
-                                >
-                                  重設密碼
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       {importResult?.errors.length ? (
                         <div className="mt-6 rounded-[1.5rem] border border-red-100 bg-red-50 p-4 text-sm text-red-700">

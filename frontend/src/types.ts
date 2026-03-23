@@ -22,6 +22,7 @@ export interface EmployeeSummary {
   username: string;
   name: string;
   email: string;
+  department: Department;
   isAdmin: boolean;
   isActive: boolean;
   createdAt: string;
@@ -62,6 +63,14 @@ export interface Supplier {
   businessRegistrationNo: string;
   isActive: boolean;
   createdAt: string;
+}
+
+export interface Department {
+  id: number;
+  name: string;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 export interface ErrorEmail {

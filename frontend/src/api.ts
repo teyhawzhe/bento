@@ -2,6 +2,7 @@ import axios from "axios";
 import type {
   AdminOrder,
   ApiMessageResponse,
+  Department,
   EmployeeMenuCatalog,
   EmployeeCreatedResponse,
   EmployeeSummary,
@@ -74,7 +75,7 @@ export function getEmployees(token: string) {
 
 export function createEmployee(
   token: string,
-  payload: { username: string; name: string; email: string },
+  payload: { username: string; name: string; email: string; departmentId: number },
 ) {
   return api.post<EmployeeCreatedResponse>("/admin/employees", payload, {
     headers: {
@@ -200,6 +201,64 @@ export function getMenus(token: string, includeHistory: boolean, supplierId?: nu
     params: {
       include_history: includeHistory,
       supplier_id: supplierId,
+    },
+  });
+}
+
+export function updateEmployee(
+  token: string,
+  employeeId: number,
+  payload: {
+    username: string;
+    name: string;
+    email: string;
+    departmentId: number;
+    isAdmin: boolean;
+  },
+) {
+  return api.patch<{ message: string; employee: EmployeeSummary }>(
+    `/admin/employees/${employeeId}`,
+    payload,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+}
+
+export function getDepartments(token: string) {
+  return api.get<Department[]>("/admin/departments", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function createDepartment(token: string, payload: { name: string }) {
+  return api.post<Department>("/admin/departments", payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function updateDepartment(
+  token: string,
+  departmentId: number,
+  payload: { name: string; isActive: boolean },
+) {
+  return api.patch<Department>(`/admin/departments/${departmentId}`, payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function deleteDepartment(token: string, departmentId: number) {
+  return api.delete<ApiMessageResponse>(`/admin/departments/${departmentId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
     },
   });
 }

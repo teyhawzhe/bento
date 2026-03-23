@@ -2,13 +2,17 @@ package com.lovius.bento.service;
 
 import com.lovius.bento.dao.EmployeeRepository;
 import com.lovius.bento.dto.CreateEmployeeRequest;
+import com.lovius.bento.dto.DepartmentSummaryResponse;
 import com.lovius.bento.dto.EmployeeCreatedResponse;
-import com.lovius.bento.dto.EmployeeSummaryResponse;
 import com.lovius.bento.dto.EmployeeStatusRequest;
+import com.lovius.bento.dto.EmployeeSummaryResponse;
 import com.lovius.bento.dto.ImportEmployeesResponse;
 import com.lovius.bento.dto.ImportedEmployeeError;
 import com.lovius.bento.dto.ResetEmployeePasswordRequest;
+import com.lovius.bento.dto.UpdateEmployeeRequest;
+import com.lovius.bento.dto.UpdateEmployeeResponse;
 import com.lovius.bento.exception.ApiException;
+import com.lovius.bento.model.Department;
 import com.lovius.bento.model.Employee;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -27,14 +31,17 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class EmployeeService {
     private final EmployeeRepository employeeRepository;
+    private final DepartmentService departmentService;
     private final PasswordPolicyService passwordPolicyService;
     private final EmailService emailService;
 
     public EmployeeService(
             EmployeeRepository employeeRepository,
+            DepartmentService departmentService,
             PasswordPolicyService passwordPolicyService,
             EmailService emailService) {
         this.employeeRepository = employeeRepository;
+        this.departmentService = departmentService;
         this.passwordPolicyService = passwordPolicyService;
         this.emailService = emailService;
     }
@@ -48,10 +55,13 @@ public class EmployeeService {
 
     public EmployeeCreatedResponse createEmployee(CreateEmployeeRequest request) {
         validateUnique(request.username(), request.email());
+        Department department = departmentService.getActiveDepartment(request.departmentId());
         String generatedPassword = passwordPolicyService.generateTemporaryPassword();
         Instant now = Instant.now();
         Employee employee = new Employee(
                 null,
+                department.getId(),
+                department.getName(),
                 request.username().trim(),
                 passwordPolicyService.hash(generatedPassword),
                 request.name().trim(),
@@ -61,7 +71,7 @@ public class EmployeeService {
                 now,
                 now);
         employeeRepository.save(employee);
-        emailService.sendPasswordEmail(employee.getEmail(), "初始密碼通知", generatedPassword);
+        emailService.sendPasswordEmail(employee.getEmail(), "新建員工帳號通知", generatedPassword);
         return new EmployeeCreatedResponse("員工帳號建立成功", toSummary(employee), generatedPassword);
     }
 
@@ -88,11 +98,15 @@ public class EmployeeService {
                     String username = getRequired(record, "username");
                     String name = getRequired(record, "name");
                     String email = getRequired(record, "email");
+                    Department department = departmentService.getActiveDepartmentByName(
+                            getRequired(record, "department"));
                     validateUnique(username, email);
                     String generatedPassword = passwordPolicyService.generateTemporaryPassword();
                     Instant now = Instant.now();
                     Employee employee = new Employee(
                             null,
+                            department.getId(),
+                            department.getName(),
                             username,
                             passwordPolicyService.hash(generatedPassword),
                             name,
@@ -102,7 +116,7 @@ public class EmployeeService {
                             now,
                             now);
                     employeeRepository.save(employee);
-                    emailService.sendPasswordEmail(email, "初始密碼通知", generatedPassword);
+                    emailService.sendPasswordEmail(email, "新建員工帳號通知", generatedPassword);
                     successCount++;
                 } catch (ApiException exception) {
                     errors.add(new ImportedEmployeeError(
@@ -122,9 +136,27 @@ public class EmployeeService {
                 errors);
     }
 
+    public UpdateEmployeeResponse updateEmployee(Long employeeId, UpdateEmployeeRequest request) {
+        Employee employee = getRequiredEmployee(employeeId);
+        String username = request.username().trim();
+        String name = request.name().trim();
+        String email = request.email().trim();
+        validateUniqueForUpdate(employeeId, username, email);
+        Department department = departmentService.getActiveDepartment(request.departmentId());
+
+        employee.setUsername(username);
+        employee.setName(name);
+        employee.setEmail(email);
+        employee.setDepartmentId(department.getId());
+        employee.setDepartmentName(department.getName());
+        employee.setAdmin(Boolean.TRUE.equals(request.isAdmin()));
+        employee.touchUpdatedAt(Instant.now());
+        employeeRepository.save(employee);
+        return new UpdateEmployeeResponse("員工資料已更新", toSummary(employee));
+    }
+
     public EmployeeSummaryResponse updateStatus(Long employeeId, EmployeeStatusRequest request) {
-        Employee employee = employeeRepository.findById(employeeId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "查無員工"));
+        Employee employee = getRequiredEmployee(employeeId);
         employee.setActive(request.isActive());
         employee.touchUpdatedAt(Instant.now());
         employeeRepository.save(employee);
@@ -134,13 +166,12 @@ public class EmployeeService {
     public EmployeeSummaryResponse resetPassword(
             Long employeeId,
             ResetEmployeePasswordRequest request) {
-        Employee employee = employeeRepository.findById(employeeId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "查無員工"));
+        Employee employee = getRequiredEmployee(employeeId);
         passwordPolicyService.validatePassword(request.newPassword());
         employee.setPasswordHash(passwordPolicyService.hash(request.newPassword()));
         employee.touchUpdatedAt(Instant.now());
         employeeRepository.save(employee);
-        emailService.sendPasswordEmail(employee.getEmail(), "密碼重設通知", request.newPassword());
+        emailService.sendPasswordEmail(employee.getEmail(), "員工密碼已重設", request.newPassword());
         return toSummary(employee);
     }
 
@@ -150,6 +181,12 @@ public class EmployeeService {
                 employee.getUsername(),
                 employee.getName(),
                 employee.getEmail(),
+                new DepartmentSummaryResponse(
+                        employee.getDepartmentId(),
+                        employee.getDepartmentName(),
+                        true,
+                        null,
+                        null),
                 employee.isAdmin(),
                 employee.isActive(),
                 employee.getCreatedAt(),
@@ -158,17 +195,35 @@ public class EmployeeService {
 
     private void validateUnique(String username, String email) {
         if (employeeRepository.existsByUsername(username.trim())) {
-            throw new ApiException(HttpStatus.CONFLICT, "帳號已存在");
+            throw new ApiException(HttpStatus.CONFLICT, "username 已存在");
         }
         if (employeeRepository.existsByEmail(email.trim())) {
             throw new ApiException(HttpStatus.CONFLICT, "Email 已存在");
         }
     }
 
+    private void validateUniqueForUpdate(Long employeeId, String username, String email) {
+        employeeRepository.findByUsername(username)
+                .filter(existing -> !existing.getId().equals(employeeId))
+                .ifPresent(existing -> {
+                    throw new ApiException(HttpStatus.CONFLICT, "username 已被其他員工使用");
+                });
+        employeeRepository.findByEmail(email)
+                .filter(existing -> !existing.getId().equals(employeeId))
+                .ifPresent(existing -> {
+                    throw new ApiException(HttpStatus.CONFLICT, "Email 已被其他員工使用");
+                });
+    }
+
+    private Employee getRequiredEmployee(Long employeeId) {
+        return employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "找不到員工"));
+    }
+
     private String getRequired(CSVRecord record, String key) {
         String value = record.get(key);
         if (value == null || value.isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, key + " 欄位不可為空白");
+            throw new ApiException(HttpStatus.BAD_REQUEST, key + " 為必填");
         }
         return value.trim();
     }

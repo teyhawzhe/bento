@@ -1,15 +1,17 @@
 package com.lovius.bento.config;
 
+import com.lovius.bento.dao.DepartmentRepository;
 import com.lovius.bento.dao.EmployeeRepository;
 import com.lovius.bento.dao.ErrorNotificationEmailRepository;
 import com.lovius.bento.dao.MenuRepository;
 import com.lovius.bento.dao.OrderRepository;
 import com.lovius.bento.dao.SupplierRepository;
+import com.lovius.bento.model.BentoOrder;
+import com.lovius.bento.model.Department;
 import com.lovius.bento.model.Employee;
 import com.lovius.bento.model.ErrorNotificationEmail;
 import com.lovius.bento.model.Menu;
 import com.lovius.bento.model.Supplier;
-import com.lovius.bento.model.BentoOrder;
 import com.lovius.bento.service.PasswordPolicyService;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -23,6 +25,7 @@ public class DemoDataInitializer {
 
     @Bean
     public ApplicationRunner seedEmployees(
+            DepartmentRepository departmentRepository,
             EmployeeRepository employeeRepository,
             PasswordPolicyService passwordPolicyService,
             ErrorNotificationEmailRepository errorNotificationEmailRepository,
@@ -31,30 +34,36 @@ public class DemoDataInitializer {
             OrderRepository orderRepository) {
         return arguments -> {
             seedEmployee(
+                    departmentRepository,
                     employeeRepository,
                     passwordPolicyService,
                     "alice",
                     "WelcomeA1",
                     "Alice Chen",
                     "alice@company.local",
+                    "Operations",
                     false,
                     true);
             seedEmployee(
+                    departmentRepository,
                     employeeRepository,
                     passwordPolicyService,
                     "admin",
                     "AdminPassA1",
                     "System Admin",
                     "admin@company.local",
+                    "Management",
                     true,
                     true);
             seedEmployee(
+                    departmentRepository,
                     employeeRepository,
                     passwordPolicyService,
                     "disabled.user",
                     "DisabledA1",
                     "Disabled User",
                     "disabled@company.local",
+                    "Operations",
                     false,
                     false);
 
@@ -64,20 +73,25 @@ public class DemoDataInitializer {
     }
 
     private void seedEmployee(
+            DepartmentRepository departmentRepository,
             EmployeeRepository employeeRepository,
             PasswordPolicyService passwordPolicyService,
             String username,
             String rawPassword,
             String name,
             String email,
+            String departmentName,
             boolean isAdmin,
             boolean isActive) {
         if (employeeRepository.existsByUsername(username)) {
             return;
         }
+        Department department = getOrCreateDepartment(departmentRepository, departmentName);
         Instant now = Instant.now();
         employeeRepository.save(new Employee(
                 null,
+                department.getId(),
+                department.getName(),
                 username,
                 passwordPolicyService.hash(rawPassword),
                 name,
@@ -86,6 +100,21 @@ public class DemoDataInitializer {
                 isActive,
                 now,
                 now));
+    }
+
+    private Department getOrCreateDepartment(
+            DepartmentRepository departmentRepository,
+            String departmentName) {
+        return departmentRepository.findByName(departmentName)
+                .orElseGet(() -> {
+                    Instant now = Instant.now();
+                    return departmentRepository.save(new Department(
+                            null,
+                            departmentName,
+                            true,
+                            now,
+                            now));
+                });
     }
 
     private void seedA002Data(
@@ -102,7 +131,7 @@ public class DemoDataInitializer {
                 "好食便當",
                 "orders@haoshi.local",
                 "02-1234-5678",
-                "王小明",
+                "王小美",
                 "12345678",
                 true,
                 Instant.now()));
@@ -115,9 +144,9 @@ public class DemoDataInitializer {
         Menu chicken = menuRepository.save(new Menu(
                 null,
                 supplier.getId(),
-                "香烤雞腿便當",
-                "肉類",
-                "附三樣配菜",
+                "招牌雞腿便當",
+                "葷食",
+                "附三樣配菜與白飯",
                 new BigDecimal("120.00"),
                 nextMonday,
                 nextMonday.plusDays(4),
@@ -127,9 +156,9 @@ public class DemoDataInitializer {
         menuRepository.save(new Menu(
                 null,
                 supplier.getId(),
-                "鮭魚排便當",
-                "海鮮",
-                "附季節時蔬",
+                "滷排骨便當",
+                "葷食",
+                "附青菜與滷蛋",
                 new BigDecimal("135.00"),
                 nextMonday,
                 nextMonday.plusDays(4),
@@ -152,17 +181,17 @@ public class DemoDataInitializer {
                 "月結便當",
                 "billing@monthly.local",
                 "02-3344-5566",
-                "林月結",
+                "林先生",
                 "87654321",
                 true,
                 now));
 
         Supplier veggieSupplier = supplierRepository.save(new Supplier(
                 null,
-                "蔬食餐盒",
+                "蔬食廚房",
                 "veggie@lunch.local",
                 "02-5566-7788",
-                "陳小青",
+                "陳小姐",
                 "99887766",
                 true,
                 now));
@@ -170,9 +199,9 @@ public class DemoDataInitializer {
         Menu ribs = menuRepository.save(new Menu(
                 null,
                 monthlySupplier.getId(),
-                "排骨便當",
-                "肉類",
-                "月結測試資料",
+                "招牌排骨便當",
+                "葷食",
+                "月結期間供應",
                 new BigDecimal("120.00"),
                 billingStart,
                 billingEnd,
@@ -182,9 +211,9 @@ public class DemoDataInitializer {
         Menu drumstick = menuRepository.save(new Menu(
                 null,
                 monthlySupplier.getId(),
-                "雞腿便當",
-                "肉類",
-                "月結測試資料",
+                "香酥雞腿便當",
+                "葷食",
+                "月結期間供應",
                 new BigDecimal("130.00"),
                 billingStart,
                 billingEnd,
@@ -194,9 +223,9 @@ public class DemoDataInitializer {
         Menu veggie = menuRepository.save(new Menu(
                 null,
                 veggieSupplier.getId(),
-                "蔬食便當",
+                "時蔬便當",
                 "素食",
-                "月結測試資料",
+                "月結期間供應",
                 new BigDecimal("110.00"),
                 billingStart,
                 billingEnd,

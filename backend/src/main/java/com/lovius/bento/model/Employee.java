@@ -4,6 +4,8 @@ import java.time.Instant;
 
 public class Employee {
     private Long id;
+    private Long departmentId;
+    private String departmentName;
     private String username;
     private String passwordHash;
     private String name;
@@ -15,6 +17,8 @@ public class Employee {
 
     public Employee(
             Long id,
+            Long departmentId,
+            String departmentName,
             String username,
             String passwordHash,
             String name,
@@ -24,6 +28,8 @@ public class Employee {
             Instant createdAt,
             Instant updatedAt) {
         this.id = id;
+        this.departmentId = departmentId;
+        this.departmentName = departmentName;
         this.username = username;
         this.passwordHash = passwordHash;
         this.name = name;
@@ -42,8 +48,28 @@ public class Employee {
         this.id = id;
     }
 
+    public Long getDepartmentId() {
+        return departmentId;
+    }
+
+    public void setDepartmentId(Long departmentId) {
+        this.departmentId = departmentId;
+    }
+
+    public String getDepartmentName() {
+        return departmentName;
+    }
+
+    public void setDepartmentName(String departmentName) {
+        this.departmentName = departmentName;
+    }
+
     public String getUsername() {
         return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public String getPasswordHash() {
@@ -58,12 +84,24 @@ public class Employee {
         return name;
     }
 
+    public void setName(String name) {
+        this.name = name;
+    }
+
     public String getEmail() {
         return email;
     }
 
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
     public boolean isAdmin() {
         return admin;
+    }
+
+    public void setAdmin(boolean admin) {
+        this.admin = admin;
     }
 
     public boolean isActive() {

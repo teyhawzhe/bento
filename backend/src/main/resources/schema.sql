@@ -1,5 +1,16 @@
+CREATE TABLE IF NOT EXISTS departments (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_departments_name (name)
+);
+
 CREATE TABLE IF NOT EXISTS employees (
     id BIGINT NOT NULL AUTO_INCREMENT,
+    department_id BIGINT NOT NULL,
     username VARCHAR(100) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     name VARCHAR(100) NOT NULL,
@@ -9,8 +20,10 @@ CREATE TABLE IF NOT EXISTS employees (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    KEY idx_employees_department_id (department_id),
     UNIQUE KEY uk_employees_username (username),
-    UNIQUE KEY uk_employees_email (email)
+    UNIQUE KEY uk_employees_email (email),
+    CONSTRAINT fk_employees_department FOREIGN KEY (department_id) REFERENCES departments(id)
 );
 
 CREATE TABLE IF NOT EXISTS suppliers (
