@@ -67,6 +67,32 @@ class A002ControllerTest {
     }
 
     @Test
+    void getMenusSupportsSupplierFilter() throws Exception {
+        Mockito.when(tokenService.parseToken("Bearer admin-token"))
+                .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
+        Mockito.when(menuService.getMenus(true, 5L)).thenReturn(List.of(new com.lovius.bento.dto.MenuResponse(
+                20L,
+                5L,
+                "招牌便當",
+                "主餐",
+                "每日限量",
+                new BigDecimal("120.00"),
+                LocalDate.of(2026, 3, 24),
+                LocalDate.of(2026, 3, 31),
+                1L,
+                Instant.parse("2026-03-23T08:30:00Z"),
+                Instant.parse("2026-03-23T08:30:00Z"))));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/menus")
+                        .header("Authorization", "Bearer admin-token")
+                        .param("include_history", "true")
+                        .param("supplier_id", "5"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$[0].supplierId").value(5))
+                .andExpect(MockMvcResultMatchers.jsonPath("$[0].name").value("招牌便當"));
+    }
+
+    @Test
     void getAdminOrdersRequiresAdmin() throws Exception {
         Mockito.when(tokenService.parseToken("Bearer employee-token"))
                 .thenReturn(new AuthenticatedUser(2L, "alice", "employee"));

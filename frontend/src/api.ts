@@ -192,13 +192,14 @@ export function cancelAdminOrder(token: string, orderId: number) {
   });
 }
 
-export function getMenus(token: string, includeHistory: boolean) {
+export function getMenus(token: string, includeHistory: boolean, supplierId?: number) {
   return api.get<Menu[]>("/menus", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
     params: {
       include_history: includeHistory,
+      supplier_id: supplierId,
     },
   });
 }

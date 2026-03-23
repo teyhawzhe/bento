@@ -43,8 +43,20 @@ public class JdbcMenuRepository implements MenuRepository {
     }
 
     @Override
-    public List<Menu> findAll(boolean includeHistory, LocalDate today) {
+    public List<Menu> findAll(boolean includeHistory, LocalDate today, Long supplierId) {
         if (includeHistory) {
+            if (supplierId != null) {
+                return jdbcTemplate.query(
+                        """
+                        SELECT id, supplier_id, name, category, description, price, valid_from, valid_to,
+                               created_by, created_at, updated_at
+                        FROM menus
+                        WHERE supplier_id = ?
+                        ORDER BY valid_from DESC, id DESC
+                        """,
+                        this::mapRow,
+                        supplierId);
+            }
             return jdbcTemplate.query(
                     """
                     SELECT id, supplier_id, name, category, description, price, valid_from, valid_to,
@@ -53,6 +65,19 @@ public class JdbcMenuRepository implements MenuRepository {
                     ORDER BY valid_from DESC, id DESC
                     """,
                     this::mapRow);
+        }
+        if (supplierId != null) {
+            return jdbcTemplate.query(
+                    """
+                    SELECT id, supplier_id, name, category, description, price, valid_from, valid_to,
+                           created_by, created_at, updated_at
+                    FROM menus
+                    WHERE valid_to >= ? AND supplier_id = ?
+                    ORDER BY valid_from ASC, id ASC
+                    """,
+                    this::mapRow,
+                    today,
+                    supplierId);
         }
         return jdbcTemplate.query(
                 """
