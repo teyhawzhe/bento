@@ -1,6 +1,7 @@
 import axios from "axios";
 import type {
   AdminOrder,
+  AdminSupplier,
   ApiMessageResponse,
   EmployeeMenuCatalog,
   EmployeeCreatedResponse,
@@ -186,6 +187,14 @@ export function createAdminOrder(
 
 export function cancelAdminOrder(token: string, orderId: number) {
   return api.delete<ApiMessageResponse>(`/admin/orders/${orderId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+export function getAdminSuppliers(token: string) {
+  return api.get<AdminSupplier[]>("/admin/suppliers", {
     headers: {
       Authorization: `Bearer ${token}`,
     },

@@ -2,6 +2,7 @@ package com.lovius.bento.controller;
 
 import com.lovius.bento.dto.ApiMessageResponse;
 import com.lovius.bento.dto.AdminOrderResponse;
+import com.lovius.bento.dto.AdminSupplierResponse;
 import com.lovius.bento.dto.CreateAdminOrderRequest;
 import com.lovius.bento.dto.CreateMenuRequest;
 import com.lovius.bento.dto.CreateOrderRequest;
@@ -139,6 +140,13 @@ public class A002Controller {
             @RequestParam(name = "search_type", required = false) String searchType) {
         requireRole(authorizationHeader, "admin");
         return supplierService.getSuppliers(name, searchType);
+    }
+
+    @GetMapping("/admin/suppliers")
+    public List<AdminSupplierResponse> getAdminSuppliers(
+            @RequestHeader("Authorization") String authorizationHeader) {
+        requireRole(authorizationHeader, "admin");
+        return supplierService.getAdminSuppliers();
     }
 
     @GetMapping("/suppliers/{id}")

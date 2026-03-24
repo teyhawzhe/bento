@@ -1,12 +1,18 @@
 package com.lovius.bento.service;
 
+import com.lovius.bento.dao.MenuRepository;
 import com.lovius.bento.dao.SupplierRepository;
+import com.lovius.bento.dto.AdminSupplierMenuOptionResponse;
+import com.lovius.bento.dto.AdminSupplierResponse;
 import com.lovius.bento.dto.CreateSupplierRequest;
 import com.lovius.bento.dto.SupplierResponse;
 import com.lovius.bento.dto.UpdateSupplierRequest;
 import com.lovius.bento.exception.ApiException;
+import com.lovius.bento.model.Menu;
 import com.lovius.bento.model.Supplier;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -14,9 +20,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class SupplierService {
     private final SupplierRepository supplierRepository;
+    private final MenuRepository menuRepository;
 
-    public SupplierService(SupplierRepository supplierRepository) {
+    public SupplierService(SupplierRepository supplierRepository, MenuRepository menuRepository) {
         this.supplierRepository = supplierRepository;
+        this.menuRepository = menuRepository;
     }
 
     public SupplierResponse createSupplier(CreateSupplierRequest request) {
@@ -52,6 +60,26 @@ public class SupplierService {
         return toResponse(getRequiredSupplier(supplierId));
     }
 
+    public List<AdminSupplierResponse> getAdminSuppliers() {
+        List<Supplier> suppliers = supplierRepository.findAll();
+        LinkedHashMap<Long, List<AdminSupplierMenuOptionResponse>> menusBySupplierId = new LinkedHashMap<>();
+        menuRepository.findAll(true, LocalDate.now()).forEach(menu -> menusBySupplierId
+                .computeIfAbsent(menu.getSupplierId(), ignored -> new java.util.ArrayList<>())
+                .add(toAdminSupplierMenuOption(menu)));
+        return suppliers.stream()
+                .map(supplier -> new AdminSupplierResponse(
+                        supplier.getId(),
+                        supplier.getName(),
+                        supplier.getEmail(),
+                        supplier.getPhone(),
+                        supplier.getContactPerson(),
+                        supplier.getBusinessRegistrationNo(),
+                        supplier.isActive(),
+                        supplier.getCreatedAt(),
+                        menusBySupplierId.getOrDefault(supplier.getId(), List.of())))
+                .toList();
+    }
+
     public SupplierResponse updateSupplier(Long supplierId, UpdateSupplierRequest request) {
         Supplier existing = getRequiredSupplier(supplierId);
         Supplier updated = new Supplier(
@@ -82,5 +110,17 @@ public class SupplierService {
                 supplier.getBusinessRegistrationNo(),
                 supplier.isActive(),
                 supplier.getCreatedAt());
+    }
+
+    private AdminSupplierMenuOptionResponse toAdminSupplierMenuOption(Menu menu) {
+        return new AdminSupplierMenuOptionResponse(
+                menu.getId(),
+                menu.getName(),
+                menu.getCategory(),
+                menu.getDescription(),
+                menu.getPrice(),
+                menu.getValidFrom(),
+                menu.getValidTo(),
+                menu.getUpdatedAt());
     }
 }

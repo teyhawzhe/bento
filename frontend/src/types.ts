@@ -64,6 +64,29 @@ export interface Supplier {
   createdAt: string;
 }
 
+export interface AdminSupplierMenuOption {
+  id: number;
+  name: string;
+  category: string;
+  description: string;
+  price: number;
+  validFrom: string;
+  validTo: string;
+  updatedAt: string;
+}
+
+export interface AdminSupplier {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  contactPerson: string;
+  businessRegistrationNo: string;
+  isActive: boolean;
+  createdAt: string;
+  menuOptions: AdminSupplierMenuOption[];
+}
+
 export interface ErrorEmail {
   id: number;
   email: string;

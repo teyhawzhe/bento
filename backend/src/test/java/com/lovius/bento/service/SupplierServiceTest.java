@@ -5,12 +5,17 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.lovius.bento.dao.MenuRepository;
 import com.lovius.bento.dao.SupplierRepository;
+import com.lovius.bento.dto.AdminSupplierResponse;
 import com.lovius.bento.dto.SupplierResponse;
 import com.lovius.bento.dto.UpdateSupplierRequest;
 import com.lovius.bento.exception.ApiException;
+import com.lovius.bento.model.Menu;
 import com.lovius.bento.model.Supplier;
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,11 +30,14 @@ class SupplierServiceTest {
     @Mock
     private SupplierRepository supplierRepository;
 
+    @Mock
+    private MenuRepository menuRepository;
+
     private SupplierService supplierService;
 
     @BeforeEach
     void setUp() {
-        supplierService = new SupplierService(supplierRepository);
+        supplierService = new SupplierService(supplierRepository, menuRepository);
     }
 
     @Test
@@ -81,6 +89,19 @@ class SupplierServiceTest {
         assertEquals("新供應商名稱", captor.getValue().getName());
     }
 
+    @Test
+    void getAdminSuppliersReturnsSuppliersWithMenuOptions() {
+        when(supplierRepository.findAll()).thenReturn(List.of(supplier("好食便當")));
+        when(menuRepository.findAll(true, LocalDate.now())).thenReturn(List.of(menu(20L, 5L, "雞腿便當")));
+
+        List<AdminSupplierResponse> response = supplierService.getAdminSuppliers();
+
+        assertEquals(1, response.size());
+        assertEquals("好食便當", response.getFirst().name());
+        assertEquals(1, response.getFirst().menuOptions().size());
+        assertEquals("雞腿便當", response.getFirst().menuOptions().getFirst().name());
+    }
+
     private Supplier supplier(String name) {
         return new Supplier(
                 5L,
@@ -90,6 +111,21 @@ class SupplierServiceTest {
                 "王小明",
                 "12345678",
                 true,
+                Instant.parse("2026-03-20T10:00:00Z"));
+    }
+
+    private Menu menu(Long id, Long supplierId, String name) {
+        return new Menu(
+                id,
+                supplierId,
+                name,
+                "肉類",
+                "附三樣配菜",
+                new BigDecimal("120.00"),
+                LocalDate.of(2026, 3, 30),
+                LocalDate.of(2026, 4, 3),
+                1L,
+                Instant.parse("2026-03-20T10:00:00Z"),
                 Instant.parse("2026-03-20T10:00:00Z"));
     }
 }

@@ -1,6 +1,8 @@
 package com.lovius.bento.controller;
 
 import com.lovius.bento.dto.AdminOrderResponse;
+import com.lovius.bento.dto.AdminSupplierMenuOptionResponse;
+import com.lovius.bento.dto.AdminSupplierResponse;
 import com.lovius.bento.dto.CreateAdminOrderRequest;
 import com.lovius.bento.dto.EmployeeMenuCatalogResponse;
 import com.lovius.bento.dto.EmployeeMenuOptionResponse;
@@ -169,6 +171,37 @@ class A002ControllerTest {
                         .param("search_type", "fuzzy"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$[0].name").value("好食便當"));
+    }
+
+    @Test
+    void getAdminSuppliersReturnsMenuOptions() throws Exception {
+        Mockito.when(tokenService.parseToken("Bearer admin-token"))
+                .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
+        Mockito.when(supplierService.getAdminSuppliers()).thenReturn(List.of(
+                new AdminSupplierResponse(
+                        5L,
+                        "好食便當",
+                        "orders@haoshi.local",
+                        "02-1234-5678",
+                        "王小明",
+                        "12345678",
+                        true,
+                        Instant.parse("2026-03-20T10:00:00Z"),
+                        List.of(new AdminSupplierMenuOptionResponse(
+                                20L,
+                                "雞腿便當",
+                                "肉類",
+                                "附三樣配菜",
+                                new BigDecimal("120.00"),
+                                LocalDate.of(2026, 3, 30),
+                                LocalDate.of(2026, 4, 3),
+                                Instant.parse("2026-03-20T10:00:00Z"))))));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/admin/suppliers")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$[0].name").value("好食便當"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$[0].menuOptions[0].name").value("雞腿便當"));
     }
 
     @Test
