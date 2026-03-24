@@ -92,7 +92,7 @@ class SupplierServiceTest {
     @Test
     void getAdminSuppliersReturnsSuppliersWithMenuOptions() {
         when(supplierRepository.findAll()).thenReturn(List.of(supplier("好食便當")));
-        when(menuRepository.findAll(true, LocalDate.now())).thenReturn(List.of(menu(20L, 5L, "雞腿便當")));
+        when(menuRepository.findAll(true, LocalDate.now(), null)).thenReturn(List.of(menu(20L, 5L, "雞腿便當")));
 
         List<AdminSupplierResponse> response = supplierService.getAdminSuppliers();
 

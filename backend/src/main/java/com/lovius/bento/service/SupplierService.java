@@ -63,7 +63,7 @@ public class SupplierService {
     public List<AdminSupplierResponse> getAdminSuppliers() {
         List<Supplier> suppliers = supplierRepository.findAll();
         LinkedHashMap<Long, List<AdminSupplierMenuOptionResponse>> menusBySupplierId = new LinkedHashMap<>();
-        menuRepository.findAll(true, LocalDate.now()).forEach(menu -> menusBySupplierId
+        menuRepository.findAll(true, LocalDate.now(), null).forEach(menu -> menusBySupplierId
                 .computeIfAbsent(menu.getSupplierId(), ignored -> new java.util.ArrayList<>())
                 .add(toAdminSupplierMenuOption(menu)));
         return suppliers.stream()

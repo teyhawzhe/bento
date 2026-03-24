@@ -2,7 +2,11 @@ frontend/node_modules
 frontend/dist
 backend/.gradle
 backend/build
+backend/bin/
+.gradle-user/
+.codex-head-*
 .DS_Store
 backend/.DS_Store
 frontend/.DS_Store
 backend/.gradle-home
+*.class
