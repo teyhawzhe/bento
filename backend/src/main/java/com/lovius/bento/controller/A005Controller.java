@@ -1,7 +1,7 @@
 package com.lovius.bento.controller;
 
+import com.lovius.bento.dto.ApiSuccessResponse;
 import com.lovius.bento.dto.MonthlyBillingLogResponse;
-import com.lovius.bento.dto.MonthlyBillingTriggerResponse;
 import com.lovius.bento.exception.ApiException;
 import com.lovius.bento.security.AuthenticatedUser;
 import com.lovius.bento.service.MonthlyBillingService;
@@ -26,17 +26,18 @@ public class A005Controller {
     }
 
     @PostMapping
-    public MonthlyBillingTriggerResponse triggerReport(
+    public ApiSuccessResponse<Void> triggerReport(
             @RequestHeader("Authorization") String authorizationHeader) {
         AuthenticatedUser user = requireAdmin(authorizationHeader);
-        return monthlyBillingService.runMonthlyBilling(user.employeeId());
+        monthlyBillingService.runMonthlyBilling(user.employeeId());
+        return ApiSuccessResponse.empty();
     }
 
     @GetMapping
-    public List<MonthlyBillingLogResponse> getLogs(
+    public ApiSuccessResponse<List<MonthlyBillingLogResponse>> getLogs(
             @RequestHeader("Authorization") String authorizationHeader) {
         requireAdmin(authorizationHeader);
-        return monthlyBillingService.getLogs();
+        return ApiSuccessResponse.success(monthlyBillingService.getLogs());
     }
 
     private AuthenticatedUser requireAdmin(String authorizationHeader) {

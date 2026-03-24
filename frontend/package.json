@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "tsc -p tsconfig.unit.json && node --test test/*.test.mjs"
   },
   "dependencies": {
     "axios": "^1.11.0",

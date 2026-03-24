@@ -38,16 +38,15 @@ class A010ControllerTest {
         mockMvc.perform(MockMvcRequestBuilders.get("/api/admin/departments")
                         .header("Authorization", "Bearer employee-token"))
                 .andExpect(MockMvcResultMatchers.status().isForbidden())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("權限不足"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.message").value("權限不足"));
     }
 
     @Test
     void createDepartmentReturnsCreatedDepartment() throws Exception {
-        Instant now = Instant.parse("2026-03-23T08:30:00Z");
         Mockito.when(tokenService.parseToken("Bearer admin-token"))
                 .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
         Mockito.when(departmentService.createDepartment(Mockito.any()))
-                .thenReturn(new DepartmentSummaryResponse(5L, "IT", true, now, now));
+                .thenReturn(new DepartmentSummaryResponse(5L, "IT", Instant.parse("2026-03-24T10:00:00Z")));
 
         mockMvc.perform(MockMvcRequestBuilders.post("/api/admin/departments")
                         .header("Authorization", "Bearer admin-token")
@@ -58,21 +57,21 @@ class A010ControllerTest {
                                 }
                                 """))
                 .andExpect(MockMvcResultMatchers.status().isCreated())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.name").value("IT"))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.isActive").value(true));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.name").value("IT"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.created_at").value("2026-03-24T10:00:00Z"));
     }
 
     @Test
     void getDepartmentsReturnsList() throws Exception {
-        Instant now = Instant.parse("2026-03-23T08:30:00Z");
         Mockito.when(tokenService.parseToken("Bearer admin-token"))
                 .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
         Mockito.when(departmentService.getAllDepartments()).thenReturn(List.of(
-                new DepartmentSummaryResponse(1L, "Management", true, now, now)));
+                new DepartmentSummaryResponse(1L, "Management", Instant.parse("2026-03-23T08:30:00Z"))));
 
         mockMvc.perform(MockMvcRequestBuilders.get("/api/admin/departments")
                         .header("Authorization", "Bearer admin-token"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].name").value("Management"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].name").value("Management"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].created_at").value("2026-03-23T08:30:00Z"));
     }
 }

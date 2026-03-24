@@ -3,7 +3,6 @@ package com.lovius.bento.service;
 import com.lovius.bento.dao.MenuRepository;
 import com.lovius.bento.dao.SupplierRepository;
 import com.lovius.bento.dto.CreateMenuRequest;
-import com.lovius.bento.dto.EmployeeMenuCatalogResponse;
 import com.lovius.bento.dto.EmployeeMenuOptionResponse;
 import com.lovius.bento.dto.MenuResponse;
 import com.lovius.bento.dto.UpdateMenuRequest;
@@ -32,23 +31,19 @@ public class MenuService {
         this.orderDeadlineService = orderDeadlineService;
     }
 
-    public EmployeeMenuCatalogResponse getEmployeeMenuCatalogForEmployee() {
+    public List<EmployeeMenuOptionResponse> getEmployeeMenusForEmployee() {
         LinkedHashMap<Long, Menu> uniqueMenus = new LinkedHashMap<>();
-        List<LocalDate> orderableDates = new ArrayList<>();
         for (LocalDate date : orderDeadlineService.employeeOrderableDates()) {
             List<Menu> availableMenus = menuRepository.findAvailableForDate(date);
             if (availableMenus.isEmpty()) {
                 continue;
             }
-            orderableDates.add(date);
             availableMenus.forEach(menu -> uniqueMenus.putIfAbsent(menu.getId(), menu));
         }
-        return new EmployeeMenuCatalogResponse(
-                orderableDates,
-                uniqueMenus.values()
+        return uniqueMenus.values()
                 .stream()
                 .map(this::toEmployeeResponse)
-                .toList());
+                .toList();
     }
 
     public List<MenuResponse> getMenus(boolean includeHistory, Long supplierId) {

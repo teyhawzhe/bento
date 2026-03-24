@@ -5,12 +5,14 @@ import com.lovius.bento.dao.EmployeeRepository;
 import com.lovius.bento.dao.ErrorNotificationEmailRepository;
 import com.lovius.bento.dao.MenuRepository;
 import com.lovius.bento.dao.OrderRepository;
+import com.lovius.bento.dao.ReportRecipientEmailRepository;
 import com.lovius.bento.dao.SupplierRepository;
 import com.lovius.bento.model.BentoOrder;
 import com.lovius.bento.model.Department;
 import com.lovius.bento.model.Employee;
 import com.lovius.bento.model.ErrorNotificationEmail;
 import com.lovius.bento.model.Menu;
+import com.lovius.bento.model.ReportRecipientEmail;
 import com.lovius.bento.model.Supplier;
 import com.lovius.bento.service.PasswordPolicyService;
 import java.math.BigDecimal;
@@ -29,6 +31,7 @@ public class DemoDataInitializer {
             EmployeeRepository employeeRepository,
             PasswordPolicyService passwordPolicyService,
             ErrorNotificationEmailRepository errorNotificationEmailRepository,
+            ReportRecipientEmailRepository reportRecipientEmailRepository,
             SupplierRepository supplierRepository,
             MenuRepository menuRepository,
             OrderRepository orderRepository) {
@@ -69,6 +72,7 @@ public class DemoDataInitializer {
 
             seedA002Data(employeeRepository, supplierRepository, menuRepository, orderRepository);
             seedA004Data(employeeRepository, errorNotificationEmailRepository);
+            seedA008Data(employeeRepository, reportRecipientEmailRepository);
         };
     }
 
@@ -274,6 +278,21 @@ public class DemoDataInitializer {
         errorNotificationEmailRepository.save(new ErrorNotificationEmail(
                 null,
                 "alerts@company.local",
+                admin.getId(),
+                Instant.now()));
+    }
+
+    private void seedA008Data(
+            EmployeeRepository employeeRepository,
+            ReportRecipientEmailRepository reportRecipientEmailRepository) {
+        if (reportRecipientEmailRepository.existsByEmail("billing-ops@company.local")) {
+            return;
+        }
+
+        Employee admin = employeeRepository.findByUsername("admin").orElseThrow();
+        reportRecipientEmailRepository.save(new ReportRecipientEmail(
+                null,
+                "billing-ops@company.local",
                 admin.getId(),
                 Instant.now()));
     }

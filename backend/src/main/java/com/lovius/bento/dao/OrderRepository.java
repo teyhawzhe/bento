@@ -1,6 +1,7 @@
 package com.lovius.bento.dao;
 
 import com.lovius.bento.model.BentoOrder;
+import com.lovius.bento.model.SupplierOrderNotificationRow;
 import com.lovius.bento.model.AdminOrderView;
 import java.time.LocalDate;
 import java.util.List;
@@ -12,5 +13,6 @@ public interface OrderRepository {
     Optional<BentoOrder> findByEmployeeIdAndOrderDate(Long employeeId, LocalDate orderDate);
     List<BentoOrder> findByEmployeeId(Long employeeId);
     List<AdminOrderView> findAdminOrders(LocalDate dateFrom, LocalDate dateTo, Long employeeId);
+    List<SupplierOrderNotificationRow> findSupplierOrderNotificationRows(LocalDate notifyDate);
     void deleteById(Long id);
 }

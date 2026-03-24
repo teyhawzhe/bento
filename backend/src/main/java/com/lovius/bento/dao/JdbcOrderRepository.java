@@ -2,6 +2,7 @@ package com.lovius.bento.dao;
 
 import com.lovius.bento.model.AdminOrderView;
 import com.lovius.bento.model.BentoOrder;
+import com.lovius.bento.model.SupplierOrderNotificationRow;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -112,6 +113,26 @@ public class JdbcOrderRepository implements OrderRepository {
     }
 
     @Override
+    public List<SupplierOrderNotificationRow> findSupplierOrderNotificationRows(LocalDate notifyDate) {
+        return jdbcTemplate.query(
+                """
+                SELECT supplier.id AS supplier_id,
+                       supplier.name AS supplier_name,
+                       supplier.email AS supplier_email,
+                       menu.name AS menu_name,
+                       COUNT(*) AS quantity
+                FROM orders ord
+                JOIN menus menu ON menu.id = ord.menu_id
+                JOIN suppliers supplier ON supplier.id = menu.supplier_id
+                WHERE ord.order_date = ?
+                GROUP BY supplier.id, supplier.name, supplier.email, menu.name
+                ORDER BY supplier.id, menu.name
+                """,
+                this::mapSupplierNotificationRow,
+                notifyDate);
+    }
+
+    @Override
     public void deleteById(Long id) {
         jdbcTemplate.update("DELETE FROM orders WHERE id = ?", id);
     }
@@ -176,5 +197,15 @@ public class JdbcOrderRepository implements OrderRepository {
                 resultSet.getObject("created_by", Long.class),
                 resultSet.getString("created_by_name"),
                 resultSet.getTimestamp("created_at").toInstant());
+    }
+
+    private SupplierOrderNotificationRow mapSupplierNotificationRow(ResultSet resultSet, int rowNumber)
+            throws SQLException {
+        return new SupplierOrderNotificationRow(
+                resultSet.getLong("supplier_id"),
+                resultSet.getString("supplier_name"),
+                resultSet.getString("supplier_email"),
+                resultSet.getString("menu_name"),
+                resultSet.getLong("quantity"));
     }
 }

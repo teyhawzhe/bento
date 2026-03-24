@@ -41,27 +41,10 @@ public class DepartmentService {
         Department department = getRequiredDepartment(departmentId);
         String name = normalizeName(request.name());
         validateUnique(name, departmentId);
-        if (!request.isActive() && employeeRepository.existsByDepartmentId(departmentId)) {
-            throw new ApiException(HttpStatus.CONFLICT, "部門已有員工使用，無法停用");
-        }
         department.setName(name);
-        department.setActive(request.isActive());
         department.touchUpdatedAt(Instant.now());
         departmentRepository.save(department);
         return toSummary(department);
-    }
-
-    public void deactivateDepartment(Long departmentId) {
-        Department department = getRequiredDepartment(departmentId);
-        if (employeeRepository.existsByDepartmentId(departmentId)) {
-            throw new ApiException(HttpStatus.CONFLICT, "部門已有員工使用，無法刪除");
-        }
-        if (!department.isActive()) {
-            return;
-        }
-        department.setActive(false);
-        department.touchUpdatedAt(Instant.now());
-        departmentRepository.save(department);
     }
 
     public Department getActiveDepartment(Long departmentId) {
@@ -102,8 +85,6 @@ public class DepartmentService {
         return new DepartmentSummaryResponse(
                 department.getId(),
                 department.getName(),
-                department.isActive(),
-                department.getCreatedAt(),
-                department.getUpdatedAt());
+                department.getCreatedAt());
     }
 }

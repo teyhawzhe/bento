@@ -1,18 +1,18 @@
 package com.lovius.bento.controller;
 
 import com.lovius.bento.dto.ApiMessageResponse;
+import com.lovius.bento.dto.ApiSuccessResponse;
 import com.lovius.bento.dto.ChangePasswordRequest;
 import com.lovius.bento.dto.CreateEmployeeRequest;
-import com.lovius.bento.dto.EmployeeCreatedResponse;
 import com.lovius.bento.dto.EmployeeStatusRequest;
 import com.lovius.bento.dto.EmployeeSummaryResponse;
 import com.lovius.bento.dto.ForgotPasswordRequest;
 import com.lovius.bento.dto.ImportEmployeesResponse;
 import com.lovius.bento.dto.LoginRequest;
 import com.lovius.bento.dto.LoginResponse;
+import com.lovius.bento.dto.RefreshTokenRequest;
 import com.lovius.bento.dto.ResetEmployeePasswordRequest;
 import com.lovius.bento.dto.UpdateEmployeeRequest;
-import com.lovius.bento.dto.UpdateEmployeeResponse;
 import com.lovius.bento.exception.ApiException;
 import com.lovius.bento.security.AuthenticatedUser;
 import com.lovius.bento.service.AuthService;
@@ -52,83 +52,101 @@ public class A001Controller {
     }
 
     @PostMapping("/auth/login")
-    public LoginResponse employeeLogin(@Valid @RequestBody LoginRequest request) {
-        return authService.login(request, false);
+    public ApiSuccessResponse<LoginResponse> employeeLogin(@Valid @RequestBody LoginRequest request) {
+        return ApiSuccessResponse.success(authService.login(request, false));
+    }
+
+    @PostMapping("/auth/refresh")
+    public ApiSuccessResponse<LoginResponse> employeeRefresh(@Valid @RequestBody RefreshTokenRequest request) {
+        return ApiSuccessResponse.success(authService.refresh(request, false));
     }
 
     @PostMapping("/admin/auth/login")
-    public LoginResponse adminLogin(@Valid @RequestBody LoginRequest request) {
-        return authService.login(request, true);
+    public ApiSuccessResponse<LoginResponse> adminLogin(@Valid @RequestBody LoginRequest request) {
+        return ApiSuccessResponse.success(authService.login(request, true));
+    }
+
+    @PostMapping("/admin/auth/refresh")
+    public ApiSuccessResponse<LoginResponse> adminRefresh(@Valid @RequestBody RefreshTokenRequest request) {
+        return ApiSuccessResponse.success(authService.refresh(request, true));
     }
 
     @PostMapping("/auth/logout")
-    public ApiMessageResponse logout() {
-        return authService.logout();
+    public ApiSuccessResponse<Void> logout(
+            @RequestHeader("Authorization") String authorizationHeader) {
+        AuthenticatedUser authenticatedUser = requireRole(authorizationHeader, "employee");
+        authService.logout(authenticatedUser);
+        return ApiSuccessResponse.empty();
     }
 
     @PostMapping("/auth/forgot-password")
-    public ApiMessageResponse forgotPassword(
+    public ApiSuccessResponse<Void> forgotPassword(
             @Valid @RequestBody ForgotPasswordRequest request) {
-        return authService.forgotPassword(request);
+        authService.forgotPassword(request);
+        return ApiSuccessResponse.empty();
     }
 
     @PatchMapping("/auth/change-password")
-    public ApiMessageResponse changePassword(
+    public ApiSuccessResponse<Void> changePassword(
             @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody ChangePasswordRequest request) {
         AuthenticatedUser authenticatedUser = requireRole(authorizationHeader, "employee");
-        return authService.changePassword(authenticatedUser, request);
+        authService.changePassword(authenticatedUser, request);
+        return ApiSuccessResponse.empty();
     }
 
     @GetMapping("/admin/employees")
-    public List<EmployeeSummaryResponse> getEmployees(
+    public ApiSuccessResponse<List<EmployeeSummaryResponse>> getEmployees(
             @RequestHeader("Authorization") String authorizationHeader) {
         requireRole(authorizationHeader, "admin");
-        return employeeService.getAllEmployees();
+        return ApiSuccessResponse.success(employeeService.getAllEmployees());
     }
 
     @PostMapping("/admin/employees")
-    public ResponseEntity<EmployeeCreatedResponse> createEmployee(
+    public ResponseEntity<ApiSuccessResponse<Void>> createEmployee(
             @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody CreateEmployeeRequest request) {
         requireRole(authorizationHeader, "admin");
+        employeeService.createEmployee(request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(employeeService.createEmployee(request));
+                .body(ApiSuccessResponse.empty());
     }
 
     @PostMapping("/admin/employees/import")
-    public ImportEmployeesResponse importEmployees(
+    public ApiSuccessResponse<ImportEmployeesResponse> importEmployees(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam("file") MultipartFile file) {
         requireRole(authorizationHeader, "admin");
-        return employeeService.importEmployees(file);
+        return ApiSuccessResponse.success(employeeService.importEmployees(file));
     }
 
     @PatchMapping("/admin/employees/{id}")
-    public UpdateEmployeeResponse updateEmployee(
+    public ApiSuccessResponse<EmployeeSummaryResponse> updateEmployee(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long employeeId,
             @Valid @RequestBody UpdateEmployeeRequest request) {
         requireRole(authorizationHeader, "admin");
-        return employeeService.updateEmployee(employeeId, request);
+        return ApiSuccessResponse.success(employeeService.updateEmployee(employeeId, request));
     }
 
     @PatchMapping("/admin/employees/{id}/status")
-    public EmployeeSummaryResponse updateEmployeeStatus(
+    public ApiSuccessResponse<Void> updateEmployeeStatus(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long employeeId,
             @Valid @RequestBody EmployeeStatusRequest request) {
         requireRole(authorizationHeader, "admin");
-        return employeeService.updateStatus(employeeId, request);
+        employeeService.updateStatus(employeeId, request);
+        return ApiSuccessResponse.empty();
     }
 
     @PatchMapping("/admin/employees/{id}/reset-password")
-    public EmployeeSummaryResponse resetPassword(
+    public ApiSuccessResponse<Void> resetPassword(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long employeeId,
             @Valid @RequestBody ResetEmployeePasswordRequest request) {
         requireRole(authorizationHeader, "admin");
-        return employeeService.resetPassword(employeeId, request);
+        employeeService.resetPassword(employeeId, request);
+        return ApiSuccessResponse.empty();
     }
 
     private AuthenticatedUser requireRole(String authorizationHeader, String expectedRole) {

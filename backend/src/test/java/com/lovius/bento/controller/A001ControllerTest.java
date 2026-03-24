@@ -1,9 +1,7 @@
 package com.lovius.bento.controller;
 
 import com.lovius.bento.dto.DepartmentSummaryResponse;
-import com.lovius.bento.dto.EmployeeCreatedResponse;
 import com.lovius.bento.dto.EmployeeSummaryResponse;
-import com.lovius.bento.dto.UpdateEmployeeResponse;
 import com.lovius.bento.exception.GlobalExceptionHandler;
 import com.lovius.bento.security.AuthenticatedUser;
 import com.lovius.bento.service.AuthService;
@@ -46,16 +44,14 @@ class A001ControllerTest {
         mockMvc.perform(MockMvcRequestBuilders.get("/api/admin/employees")
                         .header("Authorization", "Bearer admin-token"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].department.id").value(2))
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].department.name").value("Operations"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].department.id").value(2))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].department.name").value("Operations"));
     }
 
     @Test
     void createEmployeeAcceptsDepartmentId() throws Exception {
         Mockito.when(tokenService.parseToken("Bearer admin-token"))
                 .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
-        Mockito.when(employeeService.createEmployee(Mockito.any())).thenReturn(
-                new EmployeeCreatedResponse("員工帳號建立成功", employeeSummary(), "WelcomeA1"));
 
         mockMvc.perform(MockMvcRequestBuilders.post("/api/admin/employees")
                         .header("Authorization", "Bearer admin-token")
@@ -65,11 +61,11 @@ class A001ControllerTest {
                                   "username": "alice",
                                   "name": "Alice Chen",
                                   "email": "alice@company.local",
-                                  "departmentId": 2
+                                  "department_id": 2
                                 }
                                 """))
                 .andExpect(MockMvcResultMatchers.status().isCreated())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.employee.department.name").value("Operations"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data").doesNotExist());
     }
 
     @Test
@@ -77,7 +73,7 @@ class A001ControllerTest {
         Mockito.when(tokenService.parseToken("Bearer admin-token"))
                 .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
         Mockito.when(employeeService.updateEmployee(Mockito.eq(2L), Mockito.any()))
-                .thenReturn(new UpdateEmployeeResponse("員工資料已更新", employeeSummary()));
+                .thenReturn(employeeSummary());
 
         mockMvc.perform(MockMvcRequestBuilders.patch("/api/admin/employees/2")
                         .header("Authorization", "Bearer admin-token")
@@ -87,14 +83,14 @@ class A001ControllerTest {
                                   "username": "alice",
                                   "name": "Alice Chen",
                                   "email": "alice@company.local",
-                                  "departmentId": 2,
-                                  "isAdmin": true
+                                  "department_id": 2,
+                                  "is_admin": true
                                 }
                                 """))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.employee.id").value(2))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.employee.isAdmin").value(false))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.employee.department.name").value("Operations"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.id").value(2))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.is_admin").value(false))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.department.name").value("Operations"));
     }
 
     private EmployeeSummaryResponse employeeSummary() {
@@ -104,7 +100,7 @@ class A001ControllerTest {
                 "alice",
                 "Alice Chen",
                 "alice@company.local",
-                new DepartmentSummaryResponse(2L, "Operations", true, now, now),
+                new DepartmentSummaryResponse(2L, "Operations", Instant.parse("2026-03-23T08:30:00Z")),
                 false,
                 true,
                 now,

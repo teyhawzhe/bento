@@ -1,6 +1,6 @@
 package com.lovius.bento.controller;
 
-import com.lovius.bento.dto.ApiMessageResponse;
+import com.lovius.bento.dto.ApiSuccessResponse;
 import com.lovius.bento.dto.CreateDepartmentRequest;
 import com.lovius.bento.dto.DepartmentSummaryResponse;
 import com.lovius.bento.dto.UpdateDepartmentRequest;
@@ -13,7 +13,6 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,37 +37,28 @@ public class A010Controller {
     }
 
     @GetMapping
-    public List<DepartmentSummaryResponse> getDepartments(
+    public ApiSuccessResponse<List<DepartmentSummaryResponse>> getDepartments(
             @RequestHeader("Authorization") String authorizationHeader) {
         requireAdmin(authorizationHeader);
-        return departmentService.getAllDepartments();
+        return ApiSuccessResponse.success(departmentService.getAllDepartments());
     }
 
     @PostMapping
-    public ResponseEntity<DepartmentSummaryResponse> createDepartment(
+    public ResponseEntity<ApiSuccessResponse<DepartmentSummaryResponse>> createDepartment(
             @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody CreateDepartmentRequest request) {
         requireAdmin(authorizationHeader);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(departmentService.createDepartment(request));
+                .body(ApiSuccessResponse.success(departmentService.createDepartment(request)));
     }
 
     @PatchMapping("/{id}")
-    public DepartmentSummaryResponse updateDepartment(
+    public ApiSuccessResponse<DepartmentSummaryResponse> updateDepartment(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long departmentId,
             @Valid @RequestBody UpdateDepartmentRequest request) {
         requireAdmin(authorizationHeader);
-        return departmentService.updateDepartment(departmentId, request);
-    }
-
-    @DeleteMapping("/{id}")
-    public ApiMessageResponse deleteDepartment(
-            @RequestHeader("Authorization") String authorizationHeader,
-            @PathVariable("id") Long departmentId) {
-        requireAdmin(authorizationHeader);
-        departmentService.deactivateDepartment(departmentId);
-        return new ApiMessageResponse("部門已停用");
+        return ApiSuccessResponse.success(departmentService.updateDepartment(departmentId, request));
     }
 
     private AuthenticatedUser requireAdmin(String authorizationHeader) {

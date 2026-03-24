@@ -5,7 +5,5 @@ import java.time.Instant;
 public record DepartmentSummaryResponse(
         Long id,
         String name,
-        boolean isActive,
-        Instant createdAt,
-        Instant updatedAt) {
+        Instant createdAt) {
 }

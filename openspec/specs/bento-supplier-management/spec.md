@@ -1,73 +1,14 @@
 ## Purpose
-定義管理員新增、查詢與維護供應商資料的需求，供菜單管理與供應商通知流程使用。
+定義管理員維護供應商資料時，需符合的 API 契約與回應格式。
+
 ## Requirements
-### Requirement: 管理員可以新增供應商
-系統 SHALL 允許已驗證的管理員新增供應商資料。供應商資料 SHALL 至少包含名稱、通知信箱、聯繫電話、負責人、營業登記編號與啟用狀態，供後續建立菜單與 A003 通知流程使用。
+### Requirement: 供應商管理 API 必須符合 OpenAPI 契約
+系統 SHALL 讓 `/api/suppliers` 與 `/api/suppliers/{id}` 的查詢、建立與修改行為符合 `../uml/openapi.yaml` 定義的 request/response 契約，並以 `status/data` 格式回傳。
 
-#### Scenario: 管理員成功新增供應商
-- **WHEN** 管理員送出完整且有效的供應商基本資料
-- **THEN** 系統建立供應商資料並回傳新增結果
+#### Scenario: 供應商清單查詢符合 envelope
+- **WHEN** 管理員成功呼叫 `GET /api/suppliers`
+- **THEN** 系統以 `status=success` 與 `data` 陣列回傳供應商清單
 
-#### Scenario: 缺少必要欄位時新增失敗
-- **WHEN** 管理員新增供應商時缺少名稱或通知信箱等必要欄位
-- **THEN** 系統拒絕請求並提示欄位不完整
-
-### Requirement: 管理員可以查詢供應商清單
-系統 SHALL 允許已驗證的管理員查詢供應商清單。系統 MUST 支援以 `name` 與 `search_type` 作為查詢條件，其中 `search_type` 為 `exact` 時必須做名稱完全比對，為 `fuzzy` 時必須做名稱關鍵字模糊查詢；若未提供名稱條件，系統 MUST 回傳全部供應商清單。
-
-#### Scenario: 管理員查詢全部供應商
-- **WHEN** 管理員未提供名稱條件呼叫供應商清單查詢功能
-- **THEN** 系統回傳全部供應商清單
-
-#### Scenario: 管理員以精確名稱查詢供應商
-- **WHEN** 管理員提供 `name` 與 `search_type=exact` 呼叫供應商清單查詢功能
-- **THEN** 系統僅回傳名稱完全符合的供應商資料
-
-#### Scenario: 管理員以模糊名稱查詢供應商
-- **WHEN** 管理員提供 `name` 與 `search_type=fuzzy` 呼叫供應商清單查詢功能
-- **THEN** 系統回傳名稱包含關鍵字的供應商資料
-
-### Requirement: 管理員可以查詢單一供應商詳細資料
-系統 SHALL 允許已驗證的管理員以供應商編號查詢單一供應商詳細資料，供管理頁顯示完整內容與後續編輯使用。
-
-#### Scenario: 管理員成功查詢單一供應商
-- **WHEN** 管理員以存在的供應商編號呼叫單一供應商查詢功能
-- **THEN** 系統回傳該供應商的完整資料
-
-#### Scenario: 查詢不存在的供應商失敗
-- **WHEN** 管理員以不存在的供應商編號呼叫單一供應商查詢功能
-- **THEN** 系統拒絕請求並提示查無供應商
-
-### Requirement: 管理員可以修改供應商可編輯欄位
-系統 SHALL 允許已驗證的管理員修改供應商的 `name`、`email`、`phone`、`contact_person`、`is_active`。系統 MUST 禁止修改 `id` 與 `business_registration_no`，且欄位格式驗證失敗時 MUST 拒絕更新。
-
-#### Scenario: 管理員成功修改供應商資料
-- **WHEN** 管理員提交合法的可編輯欄位更新內容
-- **THEN** 系統更新供應商資料並回傳修改結果
-
-#### Scenario: 管理員嘗試修改唯讀欄位被拒絕
-- **WHEN** 管理員嘗試修改供應商的 `business_registration_no` 或 `id`
-- **THEN** 系統拒絕請求並維持原始資料不變
-
-#### Scenario: 管理員提交無效格式資料更新失敗
-- **WHEN** 管理員提交格式錯誤的 `email` 或其他不合法欄位內容
-- **THEN** 系統拒絕請求並提示欄位驗證失敗
-
-### Requirement: 供應商管理畫面 SHALL 提供獨立的建立菜單 tab
-供應商管理畫面 SHALL 在既有供應商管理區塊之外，提供一個獨立的建立菜單 tab，讓管理者可在供應商管理脈絡下完成菜單建立與查詢，不需切換到其他畫面手動對照供應商資料。
-
-#### Scenario: 管理者切換到建立菜單 tab
-- **WHEN** 管理者進入供應商管理畫面並切換到建立菜單 tab
-- **THEN** 系統顯示供應商下拉選單、新建菜單表單與菜單清單區塊
-
-### Requirement: 建立菜單 tab SHALL 以供應商下拉選單作為主要上下文
-建立菜單 tab SHALL 提供供應商下拉式選項，讓管理者先選擇供應商，再進行菜單建立與查詢。該選擇結果 SHALL 成為 tab 內所有相關操作的共同上下文。
-
-#### Scenario: 管理者選擇供應商
-- **WHEN** 管理者在建立菜單 tab 選擇某一個供應商
-- **THEN** 系統保存目前選取的供應商 id 與必要顯示資訊，供表單與清單共用
-
-#### Scenario: 管理者尚未選擇供應商
-- **WHEN** 管理者進入建立菜單 tab 但尚未選擇供應商
-- **THEN** 系統顯示需先選擇供應商的提示，且不可送出新建菜單
-
+#### Scenario: 單一供應商查詢符合 envelope
+- **WHEN** 管理員成功呼叫 `GET /api/suppliers/{id}`
+- **THEN** 系統以 `status=success` 與 `data` 物件回傳供應商詳細資料

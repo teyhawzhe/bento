@@ -1,13 +1,13 @@
 package com.lovius.bento.controller;
 
 import com.lovius.bento.dto.ApiMessageResponse;
-import com.lovius.bento.dto.AdminOrderResponse;
+import com.lovius.bento.dto.ApiSuccessResponse;
 import com.lovius.bento.dto.AdminSupplierResponse;
 import com.lovius.bento.dto.CreateAdminOrderRequest;
 import com.lovius.bento.dto.CreateMenuRequest;
 import com.lovius.bento.dto.CreateOrderRequest;
 import com.lovius.bento.dto.CreateSupplierRequest;
-import com.lovius.bento.dto.EmployeeMenuCatalogResponse;
+import com.lovius.bento.dto.EmployeeMenuOptionResponse;
 import com.lovius.bento.dto.MenuResponse;
 import com.lovius.bento.dto.OrderResponse;
 import com.lovius.bento.dto.SupplierResponse;
@@ -58,141 +58,142 @@ public class A002Controller {
     }
 
     @GetMapping("/orders/menu")
-    public EmployeeMenuCatalogResponse getNextWeekMenus(
+    public ApiSuccessResponse<List<EmployeeMenuOptionResponse>> getNextWeekMenus(
             @RequestHeader("Authorization") String authorizationHeader) {
         requireRole(authorizationHeader, "employee");
-        return menuService.getEmployeeMenuCatalogForEmployee();
+        return ApiSuccessResponse.success(menuService.getEmployeeMenusForEmployee());
     }
 
     @PostMapping("/orders")
-    public ResponseEntity<OrderResponse> createOrder(
+    public ResponseEntity<ApiSuccessResponse<OrderResponse>> createOrder(
             @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody CreateOrderRequest request) {
         AuthenticatedUser user = requireRole(authorizationHeader, "employee");
         OrderResponse response = orderService.createOrReplaceOrder(user, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiSuccessResponse.success(response));
     }
 
     @PatchMapping("/orders/{id}")
-    public OrderResponse updateOrder(
+    public ApiSuccessResponse<OrderResponse> updateOrder(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long orderId,
             @Valid @RequestBody UpdateOrderRequest request) {
         AuthenticatedUser user = requireRole(authorizationHeader, "employee");
-        return orderService.updateOrder(user, orderId, request);
+        return ApiSuccessResponse.success(orderService.updateOrder(user, orderId, request));
     }
 
     @DeleteMapping("/orders/{id}")
-    public ApiMessageResponse cancelOrder(
+    public ApiSuccessResponse<Void> cancelOrder(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long orderId) {
         AuthenticatedUser user = requireRole(authorizationHeader, "employee");
         orderService.cancelOwnOrder(user, orderId);
-        return new ApiMessageResponse("訂餐已取消");
+        return ApiSuccessResponse.empty();
     }
 
     @GetMapping("/orders/me")
-    public List<OrderResponse> getMyOrders(
+    public ApiSuccessResponse<List<OrderResponse>> getMyOrders(
             @RequestHeader("Authorization") String authorizationHeader) {
         AuthenticatedUser user = requireRole(authorizationHeader, "employee");
-        return orderService.getMyOrders(user);
+        return ApiSuccessResponse.success(orderService.getMyOrders(user));
     }
 
     @GetMapping("/menus")
-    public List<MenuResponse> getMenus(
+    public ApiSuccessResponse<List<MenuResponse>> getMenus(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "include_history", defaultValue = "false") boolean includeHistory,
             @RequestParam(name = "supplier_id", required = false) Long supplierId) {
         requireRole(authorizationHeader, "admin");
-        return menuService.getMenus(includeHistory, supplierId);
+        return ApiSuccessResponse.success(menuService.getMenus(includeHistory, supplierId));
     }
 
     @PostMapping("/menus")
-    public ResponseEntity<MenuResponse> createMenu(
+    public ResponseEntity<ApiSuccessResponse<MenuResponse>> createMenu(
             @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody CreateMenuRequest request) {
         AuthenticatedUser user = requireRole(authorizationHeader, "admin");
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(menuService.createMenu(user.employeeId(), request));
+                .body(ApiSuccessResponse.success(menuService.createMenu(user.employeeId(), request)));
     }
 
     @PatchMapping("/menus/{id}")
-    public MenuResponse updateMenu(
+    public ApiSuccessResponse<MenuResponse> updateMenu(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long menuId,
             @Valid @RequestBody UpdateMenuRequest request) {
         requireRole(authorizationHeader, "admin");
-        return menuService.updateMenu(menuId, request);
+        return ApiSuccessResponse.success(menuService.updateMenu(menuId, request));
     }
 
     @PostMapping("/suppliers")
-    public ResponseEntity<SupplierResponse> createSupplier(
+    public ResponseEntity<ApiSuccessResponse<SupplierResponse>> createSupplier(
             @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody CreateSupplierRequest request) {
         requireRole(authorizationHeader, "admin");
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(supplierService.createSupplier(request));
+                .body(ApiSuccessResponse.success(supplierService.createSupplier(request)));
     }
 
     @GetMapping("/suppliers")
-    public List<SupplierResponse> getSuppliers(
+    public ApiSuccessResponse<List<SupplierResponse>> getSuppliers(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "name", required = false) String name,
             @RequestParam(name = "search_type", required = false) String searchType) {
         requireRole(authorizationHeader, "admin");
-        return supplierService.getSuppliers(name, searchType);
+        return ApiSuccessResponse.success(supplierService.getSuppliers(name, searchType));
     }
 
     @GetMapping("/admin/suppliers")
-    public List<AdminSupplierResponse> getAdminSuppliers(
+    public ApiSuccessResponse<List<AdminSupplierResponse>> getAdminSuppliers(
             @RequestHeader("Authorization") String authorizationHeader) {
         requireRole(authorizationHeader, "admin");
-        return supplierService.getAdminSuppliers();
+        return ApiSuccessResponse.success(supplierService.getAdminSuppliers());
     }
 
     @GetMapping("/suppliers/{id}")
-    public SupplierResponse getSupplier(
+    public ApiSuccessResponse<SupplierResponse> getSupplier(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long supplierId) {
         requireRole(authorizationHeader, "admin");
-        return supplierService.getSupplier(supplierId);
+        return ApiSuccessResponse.success(supplierService.getSupplier(supplierId));
     }
 
     @PatchMapping("/suppliers/{id}")
-    public SupplierResponse updateSupplier(
+    public ApiSuccessResponse<SupplierResponse> updateSupplier(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long supplierId,
             @Valid @RequestBody UpdateSupplierRequest request) {
         requireRole(authorizationHeader, "admin");
-        return supplierService.updateSupplier(supplierId, request);
+        return ApiSuccessResponse.success(supplierService.updateSupplier(supplierId, request));
     }
 
     @DeleteMapping("/admin/orders/{id}")
-    public ApiMessageResponse cancelOrderByAdmin(
+    public ApiSuccessResponse<Void> cancelOrderByAdmin(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long orderId) {
         requireRole(authorizationHeader, "admin");
         orderService.cancelOrderByAdmin(orderId);
-        return new ApiMessageResponse("已取消指定員工訂餐");
+        return ApiSuccessResponse.empty();
     }
 
     @GetMapping("/admin/orders")
-    public List<AdminOrderResponse> getOrdersByAdmin(
+    public ApiSuccessResponse<List<OrderResponse>> getOrdersByAdmin(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "date_from", required = false) LocalDate dateFrom,
             @RequestParam(name = "date_to", required = false) LocalDate dateTo,
             @RequestParam(name = "employee_id", required = false) Long employeeId) {
         requireRole(authorizationHeader, "admin");
-        return orderService.getAdminOrders(dateFrom, dateTo, employeeId);
+        return ApiSuccessResponse.success(orderService.getAdminOrders(dateFrom, dateTo, employeeId));
     }
 
     @PostMapping("/admin/orders")
-    public ResponseEntity<OrderResponse> createOrderByAdmin(
+    public ResponseEntity<ApiSuccessResponse<OrderResponse>> createOrderByAdmin(
             @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody CreateAdminOrderRequest request) {
         AuthenticatedUser user = requireRole(authorizationHeader, "admin");
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(orderService.createOrderByAdmin(user, request));
+                .body(ApiSuccessResponse.success(orderService.createOrderByAdmin(user, request)));
     }
 
     private AuthenticatedUser requireRole(String authorizationHeader, String expectedRole) {

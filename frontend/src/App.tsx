@@ -1,9 +1,11 @@
 ﻿import { useEffect, useState, type ReactNode } from "react";
 import axios from "axios";
+import { buildAdminOrders, employeeMenusForDate, employeeOrderableDatesFor } from "./app-utils";
 import {
   cancelAdminOrder,
   cancelOrder,
   changePassword,
+  configureAuth,
   createDepartment,
   createAdminOrder,
   createEmployee,
@@ -32,7 +34,6 @@ import {
   updateEmployee,
   resetEmployeePassword,
   triggerMonthlyBilling,
-  deleteDepartment,
   updateDepartment,
   updateSupplier,
   updateEmployeeStatus,
@@ -42,7 +43,6 @@ import {
 import type {
   AdminOrder,
   Department,
-  EmployeeCreatedResponse,
   EmployeeMenuOption,
   EmployeeSummary,
   ErrorEmail,
@@ -60,7 +60,7 @@ const SESSION_KEY = "bento-session";
 const CATEGORY_OPTIONS = ["肉類", "海鮮", "素食"];
 const EMPLOYEE_TABS = [
   { id: "employee-ordering", label: "訂便當" },
-  { id: "employee-password", label: "修改密碼" },
+  { id: "employee-orders", label: "我的訂單" },
 ] as const;
 const ADMIN_TABS = [
   { id: "admin-orders", label: "訂單管理" },
@@ -200,10 +200,6 @@ function nextWeekdays() {
   }
 
   return days;
-}
-
-function employeeMenusForDate(menus: EmployeeMenuOption[], orderDate: string) {
-  return menus.filter((menu) => menu.validFrom <= orderDate && orderDate <= menu.validTo);
 }
 
 function employeeOrderCancellationDeadline(orderDate: string) {
@@ -373,7 +369,6 @@ export default function App() {
   const [reportEmails, setReportEmails] = useState<ReportEmail[]>([]);
   const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
   const [monthlyBillingLogs, setMonthlyBillingLogs] = useState<MonthlyBillingLog[]>([]);
-  const [createResult, setCreateResult] = useState<EmployeeCreatedResponse | null>(null);
   const [importResult, setImportResult] = useState<ImportEmployeesResponse | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [includeHistory, setIncludeHistory] = useState(false);
@@ -389,9 +384,7 @@ export default function App() {
     departmentId: "",
   });
   const [departmentForm, setDepartmentForm] = useState({ name: "" });
-  const [editingDepartments, setEditingDepartments] = useState<
-    Record<number, { name: string; isActive: boolean }>
-  >({});
+  const [editingDepartments, setEditingDepartments] = useState<Record<number, { name: string }>>({});
   const [editingEmployeeId, setEditingEmployeeId] = useState<number | null>(null);
   const [editingEmployees, setEditingEmployees] = useState<Record<number, EmployeeEditForm>>({});
   const [resetForms, setResetForms] = useState<Record<number, string>>({});
@@ -443,6 +436,46 @@ export default function App() {
     isActive: true,
   });
 
+  function resetAppState() {
+    setEmployees([]);
+    setEmployeeMenus([]);
+    setOrders([]);
+    setEmployeeOrderDates([]);
+    setMenus([]);
+    setDepartments([]);
+    setSuppliers([]);
+    setSupplierOptions([]);
+    setSupplierMenus([]);
+    setErrorEmails([]);
+    setReportEmails([]);
+    setAdminOrders([]);
+    setMonthlyBillingLogs([]);
+    setSelectedSupplier(null);
+    setDeadlineMessage("");
+    setImportResult(null);
+    setSelectedFile(null);
+    setActiveTab(defaultTabForRole("employee"));
+  }
+
+  function applySession(nextSession: SessionUser | null) {
+    setSession(nextSession);
+    persistSession(nextSession);
+  }
+
+  useEffect(() => {
+    configureAuth({
+      getSession: readSession,
+      onSessionUpdate: (nextSession) => {
+        applySession(nextSession);
+      },
+      onUnauthorized: () => {
+        applySession(null);
+        resetAppState();
+        openErrorBox("登入已失效，請重新登入。", "登入逾時");
+      },
+    });
+  }, []);
+
   useEffect(() => {
     if (!session) {
       return;
@@ -483,32 +516,30 @@ export default function App() {
       return;
     }
 
-    const activeDepartments = departments.filter((department) => department.isActive);
-    if (!activeDepartments.length) {
+    if (!departments.length) {
       if (createForm.departmentId) {
         setCreateForm((current) => ({ ...current, departmentId: "" }));
       }
       return;
     }
 
-    const selectedStillValid = activeDepartments.some(
+    const selectedStillValid = departments.some(
       (department) => String(department.id) === createForm.departmentId,
     );
     if (!selectedStillValid) {
       setCreateForm((current) => ({
         ...current,
-        departmentId: String(activeDepartments[0].id),
+        departmentId: String(departments[0].id),
       }));
     }
   }, [createForm.departmentId, departments, session]);
 
   useEffect(() => {
     setEditingDepartments((current) => {
-      const next: Record<number, { name: string; isActive: boolean }> = {};
+      const next: Record<number, { name: string }> = {};
       for (const department of departments) {
         next[department.id] = current[department.id] ?? {
           name: department.name,
-          isActive: department.isActive,
         };
       }
       return next;
@@ -711,18 +742,20 @@ export default function App() {
 
     try {
       const response = await getEmployeeMenus(token);
-      setEmployeeMenus(response.data.menus);
-      setEmployeeOrderDates(response.data.orderableDates);
+      const nextMenus = response.data;
+      const nextOrderableDates = employeeOrderableDatesFor(nextMenus, new Date());
+      setEmployeeMenus(nextMenus);
+      setEmployeeOrderDates(nextOrderableDates);
       setDeadlineMessage(
-        response.data.orderableDates.length
+        nextOrderableDates.length
           ? ""
           : "目前沒有可訂日期。員工可訂本次截止日後到下週五區間內、且仍在菜單有效期間內的便當。",
       );
       setOrderForm((current) => {
-        const nextOrderDate = response.data.orderableDates.includes(current.orderDate)
+        const nextOrderDate = nextOrderableDates.includes(current.orderDate)
           ? current.orderDate
-          : (response.data.orderableDates[0] ?? "");
-        const availableMenus = employeeMenusForDate(response.data.menus, nextOrderDate);
+          : (nextOrderableDates[0] ?? "");
+        const availableMenus = employeeMenusForDate(nextMenus, nextOrderDate);
         const existingOrder = nextOrders.find((entry) => entry.orderDate === nextOrderDate);
         const preferredMenuId = existingOrder
           ? String(existingOrder.menuId)
@@ -759,6 +792,7 @@ export default function App() {
         employeesResponse,
         departmentsResponse,
         menusResponse,
+        allMenusResponse,
         errorEmailsResponse,
         reportEmailsResponse,
         monthlyBillingLogsResponse,
@@ -769,6 +803,7 @@ export default function App() {
         getEmployees(token),
         getDepartments(token),
         getMenus(token, history),
+        getMenus(token, true),
         getErrorEmails(token),
         getReportEmails(token),
         getMonthlyBillingLogs(token),
@@ -789,9 +824,16 @@ export default function App() {
       setErrorEmails(errorEmailsResponse.data);
       setReportEmails(reportEmailsResponse.data);
       setMonthlyBillingLogs(monthlyBillingLogsResponse.data);
-      setAdminOrders(adminOrdersResponse.data);
       setSuppliers(suppliersResponse.data);
       setSupplierOptions(supplierOptionsResponse.data);
+      setAdminOrders(
+        buildAdminOrders(
+          adminOrdersResponse.data,
+          employeesResponse.data,
+          allMenusResponse.data,
+          supplierOptionsResponse.data,
+        ),
+      );
     } catch (unknownError) {
       handleHttpError(unknownError, "管理資料讀取失敗");
     }
@@ -799,7 +841,7 @@ export default function App() {
 
   function handleHttpError(unknownError: unknown, fallbackMessage: string) {
     if (axios.isAxiosError(unknownError)) {
-      openErrorBox(unknownError.response?.data?.message ?? fallbackMessage);
+      openErrorBox(unknownError.response?.data?.data?.message ?? fallbackMessage);
       return;
     }
     openErrorBox(fallbackMessage);
@@ -828,8 +870,7 @@ export default function App() {
     try {
       const response = await login(loginForm);
       const nextSession: SessionUser = response.data;
-      setSession(nextSession);
-      persistSession(nextSession);
+      applySession(nextSession);
       setActiveTab(defaultTabForRole(nextSession.role));
       if (nextSession.role === "employee") {
         await loadEmployeeData(nextSession.token);
@@ -855,9 +896,9 @@ export default function App() {
     }
     setLoading(true);
     try {
-      const response = await forgotPassword(forgotEmail);
+      await forgotPassword(forgotEmail);
       setForgotEmail("");
-      openSuccessBox(response.data.message, "寄送成功");
+      openSuccessBox("臨時密碼已寄送至信箱。", "寄送成功");
     } catch (unknownError) {
       handleHttpError(unknownError, "寄送臨時密碼失敗");
     } finally {
@@ -879,15 +920,15 @@ export default function App() {
     }
     setLoading(true);
     try {
-      const response = await changePassword(
+      await changePassword(
         session.token,
         changeForm.oldPassword,
         changeForm.newPassword,
       );
       setChangeForm({ oldPassword: "", newPassword: "" });
-      setSession(null);
-      persistSession(null);
-      openSuccessBox(`${response.data.message}\n請使用新密碼重新登入。`, "密碼已更新");
+      applySession(null);
+      resetAppState();
+      openSuccessBox("密碼修改成功，請使用新密碼重新登入。", "密碼已更新");
     } catch (unknownError) {
       handleHttpError(unknownError, "修改密碼失敗");
     } finally {
@@ -911,13 +952,12 @@ export default function App() {
     }
     setLoading(true);
     try {
-      const response = await createEmployee(session.token, {
+      await createEmployee(session.token, {
         username: createForm.username,
         name: createForm.name,
         email: createForm.email,
         departmentId: Number(createForm.departmentId),
       });
-      setCreateResult(response.data);
       setCreateForm((current) => ({
         username: "",
         name: "",
@@ -925,7 +965,7 @@ export default function App() {
         departmentId: current.departmentId,
       }));
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
-      openSuccessBox(response.data.message, "員工已建立");
+      openSuccessBox("員工帳號已建立，初始密碼已寄送至員工信箱。", "員工已建立");
     } catch (unknownError) {
       handleHttpError(unknownError, "新增員工失敗");
     } finally {
@@ -971,7 +1011,7 @@ export default function App() {
 
     setLoading(true);
     try {
-      const response = await updateEmployee(session.token, employeeId, {
+      await updateEmployee(session.token, employeeId, {
         username: draft.username,
         name: draft.name,
         email: draft.email,
@@ -980,7 +1020,7 @@ export default function App() {
       });
       setEditingEmployeeId(null);
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
-      openSuccessBox(response.data.message, "員工資料已更新");
+      openSuccessBox("員工資料已更新。", "員工資料已更新");
     } catch (unknownError) {
       handleHttpError(unknownError, "更新員工資料失敗");
     } finally {
@@ -1027,23 +1067,6 @@ export default function App() {
       openSuccessBox("部門資料已更新。", "部門更新成功");
     } catch (unknownError) {
       handleHttpError(unknownError, "更新部門失敗");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function submitDeleteDepartment(departmentId: number) {
-    if (!session) {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await deleteDepartment(session.token, departmentId);
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
-      openSuccessBox("部門已刪除。", "部門刪除成功");
-    } catch (unknownError) {
-      handleHttpError(unknownError, "刪除部門失敗");
     } finally {
       setLoading(false);
     }
@@ -1155,16 +1178,14 @@ export default function App() {
       return;
     }
     if (!canCancelEmployeeOrder(orderDate, currentTime)) {
-      closeMessageBox();
       openErrorBox("已超過取消訂餐截止時間");
       return;
     }
     setLoading(true);
     try {
-      const response = await cancelOrder(session.token, orderId);
+      await cancelOrder(session.token, orderId);
       await loadEmployeeData(session.token);
-      closeMessageBox();
-      openSuccessBox(response.data.message, "訂單已取消");
+      openSuccessBox("訂餐已取消。", "訂單已取消");
     } catch (unknownError) {
       handleHttpError(unknownError, "取消訂餐失敗");
     } finally {
@@ -1177,16 +1198,14 @@ export default function App() {
       return;
     }
     if (!canCancelAdminOrder(orderDate, currentTime)) {
-      closeMessageBox();
       openErrorBox("已超過管理員取消訂餐截止時間");
       return;
     }
     setLoading(true);
     try {
-      const response = await cancelAdminOrder(session.token, orderId);
+      await cancelAdminOrder(session.token, orderId);
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
-      closeMessageBox();
-      openSuccessBox(response.data.message, "訂單已取消");
+      openSuccessBox("已取消指定員工訂餐。", "訂單已取消");
     } catch (unknownError) {
       handleHttpError(unknownError, "管理員取消訂餐失敗");
     } finally {
@@ -1334,10 +1353,9 @@ export default function App() {
     }
     setLoading(true);
     try {
-      const response = await deleteErrorEmail(session.token, id);
+      await deleteErrorEmail(session.token, id);
       setErrorEmails((current) => current.filter((item) => item.id !== id));
-      closeMessageBox();
-      openSuccessBox(response.data.message, "刪除完成");
+      openSuccessBox("錯誤通知信箱已刪除。", "刪除完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "刪除錯誤通知信箱失敗");
     } finally {
@@ -1371,10 +1389,9 @@ export default function App() {
     }
     setLoading(true);
     try {
-      const response = await deleteReportEmail(session.token, id);
+      await deleteReportEmail(session.token, id);
       setReportEmails((current) => current.filter((item) => item.id !== id));
-      closeMessageBox();
-      openSuccessBox(response.data.message, "刪除完成");
+      openSuccessBox("報表收件信箱已刪除。", "刪除完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "刪除報表收件信箱失敗");
     } finally {
@@ -1388,14 +1405,9 @@ export default function App() {
     }
     setLoading(true);
     try {
-      const response = await triggerMonthlyBilling(session.token);
+      await triggerMonthlyBilling(session.token);
       await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
-      openSuccessBox(
-        `${response.data.message}，期間 ${formatDate(response.data.billingPeriodStart)} - ${formatDate(
-          response.data.billingPeriodEnd,
-        )}，共 ${response.data.supplierCount} 家供應商 / ${response.data.recipientCount} 位收件者`,
-        "月結報表已觸發",
-      );
+      openSuccessBox("月結報表已開始執行，請至下方發送記錄查看最新結果。", "月結報表已觸發");
     } catch (unknownError) {
       handleHttpError(unknownError, "手動觸發月結報表失敗");
     } finally {
@@ -1581,28 +1593,15 @@ export default function App() {
       }
     }
 
-    setSession(null);
-    persistSession(null);
-    setEmployees([]);
-    setEmployeeMenus([]);
-    setOrders([]);
-    setEmployeeOrderDates([]);
-    setMenus([]);
-    setSuppliers([]);
-    setErrorEmails([]);
-    setReportEmails([]);
-    setAdminOrders([]);
-    setMonthlyBillingLogs([]);
-    setSelectedSupplier(null);
-    setDeadlineMessage("");
-    setActiveTab(defaultTabForRole("employee"));
+    applySession(null);
+    resetAppState();
     openSuccessBox("已安全登出。", "登出完成");
   }
 
   const introText = session
     ? session.role === "admin"
       ? "管理員登入後會直接進入訂單管理 TAB，並可切換供應商管理、報表設定與系統設定。"
-      : "員工登入後會直接進入訂便當 TAB，在同一畫面左側下單、右側查看我的訂單，並可切換到修改密碼。"
+      : "員工登入後會直接進入訂便當 TAB，並可切換到「我的訂單」查看訂單與修改密碼。"
     : "登入成功後，系統會依帳號角色直接導向對應的 TAB 主頁，不再顯示員工入口或管理員入口選擇頁。";
 
   const currentTabs = session ? tabsForRole(session.role) : [];
@@ -1764,7 +1763,7 @@ export default function App() {
                 <TabBar tabs={currentTabs} activeTab={activeTab} onChange={setActiveTab} />
 
                 {activeTab === "employee-ordering" ? (
-                  <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="grid gap-6">
                     <div className="space-y-4 rounded-[1.75rem] border border-ink/10 bg-[#fcfbf7] p-6">
                       <div>
                         <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Ordering</p>
@@ -1834,7 +1833,11 @@ export default function App() {
                         </>
                       )}
                     </div>
+                  </div>
+                ) : null}
 
+                {activeTab === "employee-orders" ? (
+                  <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
                     <div className="space-y-4 rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
                       <div>
                         <p className="text-sm uppercase tracking-[0.35em] text-clay/80">My Orders</p>
@@ -1880,11 +1883,6 @@ export default function App() {
                         )}
                       </div>
                     </div>
-                  </div>
-                ) : null}
-
-                {activeTab === "employee-password" ? (
-                  <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
                     <div className="space-y-4 rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
                       <div>
                         <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Security</p>
@@ -1923,7 +1921,7 @@ export default function App() {
                     </div>
 
                     <div className="rounded-[1.75rem] border border-ink/10 bg-white p-6 text-sm leading-7 text-ink/65">
-                      修改密碼完成後，系統會要求重新登入。若你只是想查看或取消目前訂單，可回到「訂便當」TAB，在右側直接操作我的訂單。
+                      修改密碼完成後，系統會要求重新登入；若要新增或更換訂單，請切回「訂便當」TAB 操作。
                     </div>
                   </div>
                 ) : null}
@@ -2856,9 +2854,7 @@ export default function App() {
                                   }
                                 >
                                   <option value="">選擇部門</option>
-                                  {departments
-                                    .filter((department) => department.isActive)
-                                    .map((department) => (
+                                  {departments.map((department) => (
                                       <option key={department.id} value={department.id}>
                                         {department.name}
                                       </option>
@@ -2873,17 +2869,9 @@ export default function App() {
                               >
                                 建立員工
                               </button>
-                              {createResult ? (
-                                <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-emerald-700">
-                                  初始密碼: {createResult.generatedPassword}
-                                  <div className="mt-2 text-emerald-800">
-                                    部門: {createResult.employee.department.name}
-                                  </div>
-                                </div>
-                              ) : null}
-                              {!departments.filter((department) => department.isActive).length ? (
+                              {!departments.length ? (
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                                  目前沒有可用部門，請先建立並啟用部門。
+                                  目前沒有可用部門，請先建立部門。
                                 </div>
                               ) : null}
                             </div>
@@ -2948,7 +2936,6 @@ export default function App() {
                                   departments.map((department) => {
                                     const draft = editingDepartments[department.id] ?? {
                                       name: department.name,
-                                      isActive: department.isActive,
                                     };
                                     return (
                                       <div
@@ -2963,35 +2950,15 @@ export default function App() {
                                               setEditingDepartments((current) => ({
                                                 ...current,
                                                 [department.id]: {
-                                                  ...draft,
                                                   name: event.target.value,
                                                 },
                                               }))
                                             }
                                           />
-                                          <label className="flex items-center gap-2 text-sm text-ink/70">
-                                            <input
-                                              checked={draft.isActive}
-                                              type="checkbox"
-                                              onChange={(event) =>
-                                                setEditingDepartments((current) => ({
-                                                  ...current,
-                                                  [department.id]: {
-                                                    ...draft,
-                                                    isActive: event.target.checked,
-                                                  },
-                                                }))
-                                              }
-                                            />
-                                            啟用
-                                          </label>
                                         </div>
                                         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                                           <p className="text-xs text-ink/45">
                                             #{department.id}
-                                            {department.updatedAt
-                                              ? ` / 更新 ${formatDateTime(department.updatedAt)}`
-                                              : ""}
                                           </p>
                                           <div className="flex flex-wrap gap-2">
                                             <button
@@ -3001,14 +2968,6 @@ export default function App() {
                                               disabled={loading}
                                             >
                                               儲存
-                                            </button>
-                                            <button
-                                              className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                              onClick={() => void submitDeleteDepartment(department.id)}
-                                              type="button"
-                                              disabled={loading || !department.isActive}
-                                            >
-                                              刪除
                                             </button>
                                           </div>
                                         </div>
@@ -3165,9 +3124,7 @@ export default function App() {
                                       }
                                     >
                                       <option value="">選擇部門</option>
-                                      {departments
-                                        .filter((department) => department.isActive)
-                                        .map((department) => (
+                                      {departments.map((department) => (
                                           <option key={department.id} value={department.id}>
                                             {department.name}
                                           </option>

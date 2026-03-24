@@ -7,7 +7,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.lovius.bento.dto.MonthlyBillingLogResponse;
-import com.lovius.bento.dto.MonthlyBillingTriggerResponse;
 import com.lovius.bento.exception.GlobalExceptionHandler;
 import com.lovius.bento.security.AuthenticatedUser;
 import com.lovius.bento.service.MonthlyBillingService;
@@ -42,26 +41,19 @@ class A005ControllerTest {
         mockMvc.perform(post("/api/admin/reports/monthly")
                         .header("Authorization", "Bearer employee-token"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("權限不足"));
+                .andExpect(jsonPath("$.data.message").value("權限不足"));
     }
 
     @Test
     void adminCanTriggerMonthlyBilling() throws Exception {
         when(tokenService.parseToken("Bearer admin-token"))
                 .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
-        when(monthlyBillingService.runMonthlyBilling(1L)).thenReturn(new MonthlyBillingTriggerResponse(
-                "月結帳單報表已完成處理",
-                LocalDate.of(2026, 2, 15),
-                LocalDate.of(2026, 3, 14),
-                2,
-                4,
-                1));
+        when(monthlyBillingService.runMonthlyBilling(1L)).thenReturn(null);
 
         mockMvc.perform(post("/api/admin/reports/monthly")
                         .header("Authorization", "Bearer admin-token"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.supplierCount").value(2))
-                .andExpect(jsonPath("$.failedCount").value(1));
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
@@ -85,7 +77,7 @@ class A005ControllerTest {
         mockMvc.perform(get("/api/admin/reports/monthly")
                         .header("Authorization", "Bearer admin-token"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].supplierName").value("月結便當"))
-                .andExpect(jsonPath("$[0].emailTo").value("supplier@company.local"));
+                .andExpect(jsonPath("$.data[0].supplier_name").value("月結便當"))
+                .andExpect(jsonPath("$.data[0].email_to").value("supplier@company.local"));
     }
 }

@@ -7,6 +7,7 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   token: string;
+  refreshToken: string;
   role: UserRole;
   employeeId: number;
   username: string;
@@ -29,12 +30,6 @@ export interface EmployeeSummary {
   updatedAt: string;
 }
 
-export interface EmployeeCreatedResponse {
-  message: string;
-  employee: EmployeeSummary;
-  generatedPassword: string;
-}
-
 export interface ImportEmployeesResponse {
   message: string;
   successCount: number;
@@ -48,6 +43,7 @@ export interface ImportEmployeesResponse {
 
 export interface SessionUser {
   token: string;
+  refreshToken: string;
   role: UserRole;
   employeeId: number;
   username: string;
@@ -68,9 +64,6 @@ export interface Supplier {
 export interface Department {
   id: number;
   name: string;
-  isActive: boolean;
-  createdAt: string | null;
-  updatedAt: string | null;
 }
 
 export interface ErrorEmail {
@@ -101,15 +94,6 @@ export interface MonthlyBillingLog {
   createdAt: string;
 }
 
-export interface MonthlyBillingTriggerResult {
-  message: string;
-  billingPeriodStart: string;
-  billingPeriodEnd: string;
-  supplierCount: number;
-  recipientCount: number;
-  failedCount: number;
-}
-
 export interface Menu {
   id: number;
   supplierId: number;
@@ -131,11 +115,6 @@ export interface EmployeeMenuOption {
   description: string;
   validFrom: string;
   validTo: string;
-}
-
-export interface EmployeeMenuCatalog {
-  orderableDates: string[];
-  menus: EmployeeMenuOption[];
 }
 
 export interface Order {

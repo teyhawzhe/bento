@@ -1,7 +1,8 @@
 package com.lovius.bento.dto;
 
 public record LoginResponse(
-        String token,
+        String accessToken,
+        String refreshToken,
         String role,
         Long employeeId,
         String username,

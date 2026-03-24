@@ -2,7 +2,6 @@ package com.lovius.bento.service;
 
 import com.lovius.bento.dao.EmployeeRepository;
 import com.lovius.bento.dao.OrderRepository;
-import com.lovius.bento.dto.AdminOrderResponse;
 import com.lovius.bento.dto.CreateAdminOrderRequest;
 import com.lovius.bento.dto.CreateOrderRequest;
 import com.lovius.bento.dto.OrderResponse;
@@ -106,7 +105,7 @@ public class OrderService {
                 .toList();
     }
 
-    public List<AdminOrderResponse> getAdminOrders(LocalDate dateFrom, LocalDate dateTo, Long employeeId) {
+    public List<OrderResponse> getAdminOrders(LocalDate dateFrom, LocalDate dateTo, Long employeeId) {
         LocalDate resolvedDateFrom = dateFrom == null ? LocalDate.now(ZONE_ID) : dateFrom;
         LocalDate resolvedDateTo = dateTo == null ? resolvedDateFrom : dateTo;
         if (resolvedDateFrom.isAfter(resolvedDateTo)) {
@@ -175,19 +174,15 @@ public class OrderService {
                 order.getCreatedAt());
     }
 
-    private AdminOrderResponse toAdminResponse(AdminOrderView order) {
-        return new AdminOrderResponse(
+    private OrderResponse toAdminResponse(AdminOrderView order) {
+        return new OrderResponse(
                 order.id(),
                 order.employeeId(),
                 order.employeeName(),
                 order.menuId(),
                 order.menuName(),
-                order.supplierId(),
-                order.supplierName(),
-                order.menuPrice(),
                 order.orderDate(),
                 order.createdBy(),
-                order.createdByName(),
                 order.createdAt());
     }
 }

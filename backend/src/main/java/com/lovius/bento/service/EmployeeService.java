@@ -3,14 +3,12 @@ package com.lovius.bento.service;
 import com.lovius.bento.dao.EmployeeRepository;
 import com.lovius.bento.dto.CreateEmployeeRequest;
 import com.lovius.bento.dto.DepartmentSummaryResponse;
-import com.lovius.bento.dto.EmployeeCreatedResponse;
 import com.lovius.bento.dto.EmployeeStatusRequest;
 import com.lovius.bento.dto.EmployeeSummaryResponse;
 import com.lovius.bento.dto.ImportEmployeesResponse;
 import com.lovius.bento.dto.ImportedEmployeeError;
 import com.lovius.bento.dto.ResetEmployeePasswordRequest;
 import com.lovius.bento.dto.UpdateEmployeeRequest;
-import com.lovius.bento.dto.UpdateEmployeeResponse;
 import com.lovius.bento.exception.ApiException;
 import com.lovius.bento.model.Department;
 import com.lovius.bento.model.Employee;
@@ -34,16 +32,19 @@ public class EmployeeService {
     private final DepartmentService departmentService;
     private final PasswordPolicyService passwordPolicyService;
     private final EmailService emailService;
+    private final RefreshTokenService refreshTokenService;
 
     public EmployeeService(
             EmployeeRepository employeeRepository,
             DepartmentService departmentService,
             PasswordPolicyService passwordPolicyService,
-            EmailService emailService) {
+            EmailService emailService,
+            RefreshTokenService refreshTokenService) {
         this.employeeRepository = employeeRepository;
         this.departmentService = departmentService;
         this.passwordPolicyService = passwordPolicyService;
         this.emailService = emailService;
+        this.refreshTokenService = refreshTokenService;
     }
 
     public List<EmployeeSummaryResponse> getAllEmployees() {
@@ -53,7 +54,7 @@ public class EmployeeService {
                 .toList();
     }
 
-    public EmployeeCreatedResponse createEmployee(CreateEmployeeRequest request) {
+    public void createEmployee(CreateEmployeeRequest request) {
         validateUnique(request.username(), request.email());
         Department department = departmentService.getActiveDepartment(request.departmentId());
         String generatedPassword = passwordPolicyService.generateTemporaryPassword();
@@ -72,7 +73,6 @@ public class EmployeeService {
                 now);
         employeeRepository.save(employee);
         emailService.sendPasswordEmail(employee.getEmail(), "新建員工帳號通知", generatedPassword);
-        return new EmployeeCreatedResponse("員工帳號建立成功", toSummary(employee), generatedPassword);
     }
 
     public ImportEmployeesResponse importEmployees(MultipartFile file) {
@@ -136,7 +136,7 @@ public class EmployeeService {
                 errors);
     }
 
-    public UpdateEmployeeResponse updateEmployee(Long employeeId, UpdateEmployeeRequest request) {
+    public EmployeeSummaryResponse updateEmployee(Long employeeId, UpdateEmployeeRequest request) {
         Employee employee = getRequiredEmployee(employeeId);
         String username = request.username().trim();
         String name = request.name().trim();
@@ -152,18 +152,17 @@ public class EmployeeService {
         employee.setAdmin(Boolean.TRUE.equals(request.isAdmin()));
         employee.touchUpdatedAt(Instant.now());
         employeeRepository.save(employee);
-        return new UpdateEmployeeResponse("員工資料已更新", toSummary(employee));
+        return toSummary(employee);
     }
 
-    public EmployeeSummaryResponse updateStatus(Long employeeId, EmployeeStatusRequest request) {
+    public void updateStatus(Long employeeId, EmployeeStatusRequest request) {
         Employee employee = getRequiredEmployee(employeeId);
         employee.setActive(request.isActive());
         employee.touchUpdatedAt(Instant.now());
         employeeRepository.save(employee);
-        return toSummary(employee);
     }
 
-    public EmployeeSummaryResponse resetPassword(
+    public void resetPassword(
             Long employeeId,
             ResetEmployeePasswordRequest request) {
         Employee employee = getRequiredEmployee(employeeId);
@@ -171,8 +170,8 @@ public class EmployeeService {
         employee.setPasswordHash(passwordPolicyService.hash(request.newPassword()));
         employee.touchUpdatedAt(Instant.now());
         employeeRepository.save(employee);
+        refreshTokenService.revokeAllByEmployeeId(employee.getId());
         emailService.sendPasswordEmail(employee.getEmail(), "員工密碼已重設", request.newPassword());
-        return toSummary(employee);
     }
 
     private EmployeeSummaryResponse toSummary(Employee employee) {
@@ -184,8 +183,6 @@ public class EmployeeService {
                 new DepartmentSummaryResponse(
                         employee.getDepartmentId(),
                         employee.getDepartmentName(),
-                        true,
-                        null,
                         null),
                 employee.isAdmin(),
                 employee.isActive(),

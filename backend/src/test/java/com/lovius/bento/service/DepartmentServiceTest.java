@@ -47,28 +47,27 @@ class DepartmentServiceTest {
     }
 
     @Test
-    void updateDepartmentRejectsDeactivateWhenEmployeesExist() {
+    void updateDepartmentRejectsDuplicateName() {
         when(departmentRepository.findById(3L))
                 .thenReturn(Optional.of(department(3L, "HR", true)));
-        when(departmentRepository.findByName("HR"))
-                .thenReturn(Optional.of(department(3L, "HR", true)));
-        when(employeeRepository.existsByDepartmentId(3L)).thenReturn(true);
+        when(departmentRepository.findByName("IT"))
+                .thenReturn(Optional.of(department(1L, "IT", true)));
 
         ApiException exception = assertThrows(ApiException.class,
-                () -> departmentService.updateDepartment(3L, new UpdateDepartmentRequest("HR", false)));
+                () -> departmentService.updateDepartment(3L, new UpdateDepartmentRequest("IT")));
 
-        assertEquals("部門已有員工使用，無法停用", exception.getMessage());
+        assertEquals("部門名稱已存在", exception.getMessage());
     }
 
     @Test
-    void deactivateDepartmentPersistsInactiveState() {
+    void updateDepartmentPersistsNewName() {
         Department department = department(5L, "Finance", true);
         when(departmentRepository.findById(5L)).thenReturn(Optional.of(department));
-        when(employeeRepository.existsByDepartmentId(5L)).thenReturn(false);
+        when(departmentRepository.findByName("Accounting")).thenReturn(Optional.empty());
 
-        departmentService.deactivateDepartment(5L);
+        departmentService.updateDepartment(5L, new UpdateDepartmentRequest("Accounting"));
 
-        assertEquals(false, department.isActive());
+        assertEquals("Accounting", department.getName());
         verify(departmentRepository).save(department);
     }
 
@@ -82,7 +81,7 @@ class DepartmentServiceTest {
 
         assertEquals(2, response.size());
         assertEquals("Management", response.getFirst().name());
-        assertEquals(false, response.get(1).isActive());
+        assertEquals("Operations", response.get(1).name());
     }
 
     private Department department(Long id, String name, boolean isActive) {

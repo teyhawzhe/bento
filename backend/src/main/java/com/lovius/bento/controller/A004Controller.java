@@ -1,6 +1,6 @@
 package com.lovius.bento.controller;
 
-import com.lovius.bento.dto.ApiMessageResponse;
+import com.lovius.bento.dto.ApiSuccessResponse;
 import com.lovius.bento.dto.CreateErrorEmailRequest;
 import com.lovius.bento.dto.ErrorEmailResponse;
 import com.lovius.bento.exception.ApiException;
@@ -36,28 +36,28 @@ public class A004Controller {
     }
 
     @GetMapping
-    public List<ErrorEmailResponse> getErrorEmails(
+    public ApiSuccessResponse<List<ErrorEmailResponse>> getErrorEmails(
             @RequestHeader("Authorization") String authorizationHeader) {
         requireAdmin(authorizationHeader);
-        return errorEmailSettingsService.getAll();
+        return ApiSuccessResponse.success(errorEmailSettingsService.getAll());
     }
 
     @PostMapping
-    public ResponseEntity<ErrorEmailResponse> createErrorEmail(
+    public ResponseEntity<ApiSuccessResponse<ErrorEmailResponse>> createErrorEmail(
             @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody CreateErrorEmailRequest request) {
         AuthenticatedUser user = requireAdmin(authorizationHeader);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(errorEmailSettingsService.create(user.employeeId(), request));
+                .body(ApiSuccessResponse.success(errorEmailSettingsService.create(user.employeeId(), request)));
     }
 
     @DeleteMapping("/{id}")
-    public ApiMessageResponse deleteErrorEmail(
+    public ApiSuccessResponse<Void> deleteErrorEmail(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long id) {
         requireAdmin(authorizationHeader);
         errorEmailSettingsService.delete(id);
-        return new ApiMessageResponse("錯誤通知信箱已刪除");
+        return ApiSuccessResponse.empty();
     }
 
     private AuthenticatedUser requireAdmin(String authorizationHeader) {

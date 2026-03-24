@@ -48,7 +48,7 @@ class A004ControllerTest {
         mockMvc.perform(get("/api/settings/error-emails")
                         .header("Authorization", "Bearer admin-token"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].email").value("ops-alerts@company.local"));
+                .andExpect(jsonPath("$.data[0].email").value("ops-alerts@company.local"));
     }
 
     @Test
@@ -65,7 +65,7 @@ class A004ControllerTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("錯誤通知 Email 格式錯誤"));
+                .andExpect(jsonPath("$.data.message").value("錯誤通知 Email 格式錯誤"));
     }
 
     @Test
@@ -76,7 +76,7 @@ class A004ControllerTest {
         mockMvc.perform(delete("/api/settings/error-emails/5")
                         .header("Authorization", "Bearer employee-token"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("權限不足"));
+                .andExpect(jsonPath("$.data.message").value("權限不足"));
     }
 
     @Test
@@ -95,8 +95,8 @@ class A004ControllerTest {
                                 }
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(9))
-                .andExpect(jsonPath("$.email").value("ops@company.local"));
+                .andExpect(jsonPath("$.data.id").value(9))
+                .andExpect(jsonPath("$.data.email").value("ops@company.local"));
 
         verify(errorEmailSettingsService).create(1L, new CreateErrorEmailRequest("ops@company.local"));
     }
@@ -112,6 +112,6 @@ class A004ControllerTest {
         mockMvc.perform(delete("/api/settings/error-emails/99")
                         .header("Authorization", "Bearer admin-token"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("查無錯誤通知信箱"));
+                .andExpect(jsonPath("$.data.message").value("查無錯誤通知信箱"));
     }
 }

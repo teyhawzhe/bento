@@ -34,6 +34,9 @@ class EmployeeServiceTest {
     @Mock
     private EmailService emailService;
 
+    @Mock
+    private RefreshTokenService refreshTokenService;
+
     private EmployeeService employeeService;
 
     @BeforeEach
@@ -42,7 +45,8 @@ class EmployeeServiceTest {
                 employeeRepository,
                 departmentService,
                 passwordPolicyService,
-                emailService);
+                emailService,
+                refreshTokenService);
     }
 
     @Test
@@ -54,10 +58,9 @@ class EmployeeServiceTest {
         Mockito.when(passwordPolicyService.generateTemporaryPassword()).thenReturn("WelcomeA1");
         Mockito.when(passwordPolicyService.hash("WelcomeA1")).thenReturn("hashed-password");
 
-        var response = employeeService.createEmployee(
+        employeeService.createEmployee(
                 new CreateEmployeeRequest("alice", "Alice Chen", "alice@company.local", 2L));
 
-        Assertions.assertEquals("Operations", response.employee().department().name());
         Mockito.verify(employeeRepository).save(ArgumentMatchers.any(Employee.class));
         Mockito.verify(emailService)
                 .sendPasswordEmail("alice@company.local", "新建員工帳號通知", "WelcomeA1");
@@ -80,7 +83,7 @@ class EmployeeServiceTest {
     }
 
     @Test
-    void resetPasswordReturnsUpdatedEmployeeDepartment() {
+    void resetPasswordRevokesRefreshTokensAndPersistsHash() {
         Employee employee = new Employee(
                 8L,
                 3L,
@@ -96,10 +99,10 @@ class EmployeeServiceTest {
         Mockito.when(employeeRepository.findById(8L)).thenReturn(Optional.of(employee));
         Mockito.when(passwordPolicyService.hash("NewPassA1")).thenReturn("new-hash");
 
-        var response = employeeService.resetPassword(8L, new ResetEmployeePasswordRequest("NewPassA1"));
+        employeeService.resetPassword(8L, new ResetEmployeePasswordRequest("NewPassA1"));
 
-        Assertions.assertEquals("Finance", response.department().name());
         Assertions.assertEquals("new-hash", employee.getPasswordHash());
+        Mockito.verify(refreshTokenService).revokeAllByEmployeeId(8L);
     }
 
     @Test
@@ -138,9 +141,9 @@ class EmployeeServiceTest {
                 5L,
                 new UpdateEmployeeRequest("alice", "Alice Wang", "alice@company.local", 4L, true));
 
-        Assertions.assertEquals("Alice Wang", response.employee().name());
-        Assertions.assertEquals("Sales", response.employee().department().name());
-        Assertions.assertTrue(response.employee().isAdmin());
+        Assertions.assertEquals("Alice Wang", response.name());
+        Assertions.assertEquals("Sales", response.department().name());
+        Assertions.assertTrue(response.isAdmin());
         Mockito.verify(employeeRepository).save(employee);
     }
 

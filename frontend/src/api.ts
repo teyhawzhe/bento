@@ -1,10 +1,8 @@
 import axios from "axios";
+import type { AxiosResponse, InternalAxiosRequestConfig } from "axios";
 import type {
-  AdminOrder,
-  ApiMessageResponse,
   Department,
-  EmployeeMenuCatalog,
-  EmployeeCreatedResponse,
+  EmployeeMenuOption,
   EmployeeSummary,
   ErrorEmail,
   ImportEmployeesResponse,
@@ -12,37 +10,229 @@ import type {
   LoginResponse,
   Menu,
   MonthlyBillingLog,
-  MonthlyBillingTriggerResult,
   Order,
   ReportEmail,
+  SessionUser,
   Supplier,
 } from "./types";
+
+interface ApiEnvelope<T> {
+  status: string;
+  data: T;
+}
+
+interface BackendLoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  role: "employee" | "admin";
+  employeeId: number;
+  username: string;
+  name: string;
+}
+
+interface AuthConfig {
+  getSession: () => SessionUser | null;
+  onSessionUpdate: (session: SessionUser) => void;
+  onUnauthorized: () => void;
+}
+
+interface RetriableRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+  _skipAuthRefresh?: boolean;
+}
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api",
 });
 
+let authConfig: AuthConfig = {
+  getSession: () => null,
+  onSessionUpdate: () => {},
+  onUnauthorized: () => {},
+};
+let refreshSessionPromise: Promise<SessionUser> | null = null;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function toSnakeCase(value: string) {
+  return value.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+}
+
+function toCamelCase(value: string) {
+  return value.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+function snakeCaseKeys<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => snakeCaseKeys(item)) as T;
+  }
+
+  if (value instanceof Date || value instanceof File || value instanceof Blob || value instanceof FormData) {
+    return value;
+  }
+
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nestedValue]) => [toSnakeCase(key), snakeCaseKeys(nestedValue)]),
+  ) as T;
+}
+
+function camelCaseKeys<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => camelCaseKeys(item)) as T;
+  }
+
+  if (value instanceof Date || value instanceof File || value instanceof Blob || value instanceof FormData) {
+    return value;
+  }
+
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nestedValue]) => [toCamelCase(key), camelCaseKeys(nestedValue)]),
+  ) as T;
+}
+
+async function unwrap<T>(request: Promise<AxiosResponse<ApiEnvelope<T>>>) {
+  const response = await request;
+  return {
+    ...response,
+    data: camelCaseKeys(response.data.data),
+  } as AxiosResponse<T>;
+}
+
+function mapLoginResponse(response: AxiosResponse<BackendLoginResponse>) {
+  return {
+    ...response,
+    data: {
+      token: response.data.accessToken,
+      refreshToken: response.data.refreshToken,
+      role: response.data.role,
+      employeeId: response.data.employeeId,
+      username: response.data.username,
+      name: response.data.name,
+    },
+  } as AxiosResponse<LoginResponse>;
+}
+
+function mapBackendLoginData(response: BackendLoginResponse): LoginResponse {
+  return {
+    token: response.accessToken,
+    refreshToken: response.refreshToken,
+    role: response.role,
+    employeeId: response.employeeId,
+    username: response.username,
+    name: response.name,
+  };
+}
+
+async function refreshSession(currentSession: SessionUser) {
+  if (!refreshSessionPromise) {
+    refreshSessionPromise = (async () => {
+      const endpoint =
+        currentSession.role === "admin" ? "/admin/auth/refresh" : "/auth/refresh";
+      const response = await unwrap<BackendLoginResponse>(
+        api.post(
+          endpoint,
+          { refreshToken: currentSession.refreshToken },
+          {
+            headers: {
+              Authorization: `Bearer ${currentSession.token}`,
+            },
+            _skipAuthRefresh: true,
+          } as RetriableRequestConfig,
+        ),
+      );
+      const nextSession: SessionUser = {
+        ...currentSession,
+        ...mapBackendLoginData(response.data),
+      };
+      authConfig.onSessionUpdate(nextSession);
+      return nextSession;
+    })().finally(() => {
+      refreshSessionPromise = null;
+    });
+  }
+
+  return refreshSessionPromise;
+}
+
+export function configureAuth(config: AuthConfig) {
+  authConfig = config;
+}
+
+api.interceptors.request.use((config) => {
+  if (config.data && !(config.data instanceof FormData)) {
+    config.data = snakeCaseKeys(config.data);
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  async (unknownError) => {
+    if (!axios.isAxiosError(unknownError)) {
+      throw unknownError;
+    }
+
+    const requestConfig = unknownError.config as RetriableRequestConfig | undefined;
+    if (!requestConfig || requestConfig._skipAuthRefresh || requestConfig._retry) {
+      throw unknownError;
+    }
+
+    if (unknownError.response?.status !== 401) {
+      throw unknownError;
+    }
+
+    const currentSession = authConfig.getSession();
+    if (!currentSession?.refreshToken) {
+      authConfig.onUnauthorized();
+      throw unknownError;
+    }
+
+    try {
+      const nextSession = await refreshSession(currentSession);
+      requestConfig._retry = true;
+      requestConfig.headers = requestConfig.headers ?? {};
+      requestConfig.headers.Authorization = `Bearer ${nextSession.token}`;
+      return api(requestConfig);
+    } catch (refreshError) {
+      authConfig.onUnauthorized();
+      throw refreshError;
+    }
+  },
+);
+
 export async function login(payload: LoginRequest) {
   try {
-    return await api.post<LoginResponse>("/auth/login", payload);
+    return mapLoginResponse(await unwrap<BackendLoginResponse>(api.post("/auth/login", payload)));
   } catch (unknownError) {
     if (
       axios.isAxiosError(unknownError) &&
       unknownError.response?.status === 403 &&
-      unknownError.response?.data?.message === "請使用管理員登入入口"
+      unknownError.response?.data?.data?.message === "請使用管理員登入入口"
     ) {
-      return api.post<LoginResponse>("/admin/auth/login", payload);
+      return mapLoginResponse(
+        await unwrap<BackendLoginResponse>(api.post("/admin/auth/login", payload)),
+      );
     }
     throw unknownError;
   }
 }
 
 export function forgotPassword(email: string) {
-  return api.post<ApiMessageResponse>("/auth/forgot-password", { email });
+  return unwrap<void>(api.post("/auth/forgot-password", { email }));
 }
 
 export function logout(token: string) {
-  return api.post<ApiMessageResponse>(
+  return unwrap<void>(api.post(
     "/auth/logout",
     {},
     {
@@ -50,11 +240,11 @@ export function logout(token: string) {
         Authorization: `Bearer ${token}`,
       },
     },
-  );
+  ));
 }
 
 export function changePassword(token: string, oldPassword: string, newPassword: string) {
-  return api.patch<ApiMessageResponse>(
+  return unwrap<void>(api.patch(
     "/auth/change-password",
     { oldPassword, newPassword },
     {
@@ -62,40 +252,40 @@ export function changePassword(token: string, oldPassword: string, newPassword: 
         Authorization: `Bearer ${token}`,
       },
     },
-  );
+  ));
 }
 
 export function getEmployees(token: string) {
-  return api.get<EmployeeSummary[]>("/admin/employees", {
+  return unwrap<EmployeeSummary[]>(api.get("/admin/employees", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function createEmployee(
   token: string,
   payload: { username: string; name: string; email: string; departmentId: number },
 ) {
-  return api.post<EmployeeCreatedResponse>("/admin/employees", payload, {
+  return unwrap<void>(api.post("/admin/employees", payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function importEmployees(token: string, file: File) {
   const formData = new FormData();
   formData.append("file", file);
-  return api.post<ImportEmployeesResponse>("/admin/employees/import", formData, {
+  return unwrap<ImportEmployeesResponse>(api.post("/admin/employees/import", formData, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function updateEmployeeStatus(token: string, employeeId: number, isActive: boolean) {
-  return api.patch<EmployeeSummary>(
+  return unwrap<void>(api.patch(
     `/admin/employees/${employeeId}/status`,
     { is_active: isActive },
     {
@@ -103,11 +293,11 @@ export function updateEmployeeStatus(token: string, employeeId: number, isActive
         Authorization: `Bearer ${token}`,
       },
     },
-  );
+  ));
 }
 
 export function resetEmployeePassword(token: string, employeeId: number, newPassword: string) {
-  return api.patch<EmployeeSummary>(
+  return unwrap<void>(api.patch(
     `/admin/employees/${employeeId}/reset-password`,
     { newPassword },
     {
@@ -115,47 +305,47 @@ export function resetEmployeePassword(token: string, employeeId: number, newPass
         Authorization: `Bearer ${token}`,
       },
     },
-  );
+  ));
 }
 
 export function getEmployeeMenus(token: string) {
-  return api.get<EmployeeMenuCatalog>("/orders/menu", {
+  return unwrap<EmployeeMenuOption[]>(api.get("/orders/menu", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function getMyOrders(token: string) {
-  return api.get<Order[]>("/orders/me", {
+  return unwrap<Order[]>(api.get("/orders/me", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function createOrder(token: string, payload: { menuId: number; orderDate: string }) {
-  return api.post<Order>("/orders", payload, {
+  return unwrap<Order>(api.post("/orders", payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function updateOrder(token: string, orderId: number, payload: { menuId: number }) {
-  return api.patch<Order>(`/orders/${orderId}`, payload, {
+  return unwrap<Order>(api.patch(`/orders/${orderId}`, payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function cancelOrder(token: string, orderId: number) {
-  return api.delete<ApiMessageResponse>(`/orders/${orderId}`, {
+  return unwrap<void>(api.delete(`/orders/${orderId}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function getAdminOrders(
@@ -166,35 +356,35 @@ export function getAdminOrders(
     employee_id: number;
   }>,
 ) {
-  return api.get<AdminOrder[]>("/admin/orders", {
+  return unwrap<Order[]>(api.get("/admin/orders", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
     params,
-  });
+  }));
 }
 
 export function createAdminOrder(
   token: string,
   payload: { employeeId: number; menuId: number; orderDate: string },
 ) {
-  return api.post<Order>("/admin/orders", payload, {
+  return unwrap<Order>(api.post("/admin/orders", payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function cancelAdminOrder(token: string, orderId: number) {
-  return api.delete<ApiMessageResponse>(`/admin/orders/${orderId}`, {
+  return unwrap<void>(api.delete(`/admin/orders/${orderId}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function getMenus(token: string, includeHistory: boolean, supplierId?: number) {
-  return api.get<Menu[]>("/menus", {
+  return unwrap<Menu[]>(api.get("/menus", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -202,7 +392,7 @@ export function getMenus(token: string, includeHistory: boolean, supplierId?: nu
       include_history: includeHistory,
       supplier_id: supplierId,
     },
-  });
+  }));
 }
 
 export function updateEmployee(
@@ -216,7 +406,7 @@ export function updateEmployee(
     isAdmin: boolean;
   },
 ) {
-  return api.patch<{ message: string; employee: EmployeeSummary }>(
+  return unwrap<EmployeeSummary>(api.patch(
     `/admin/employees/${employeeId}`,
     payload,
     {
@@ -224,43 +414,43 @@ export function updateEmployee(
         Authorization: `Bearer ${token}`,
       },
     },
-  );
+  ));
 }
 
 export function getDepartments(token: string) {
-  return api.get<Department[]>("/admin/departments", {
+  return unwrap<Department[]>(api.get("/admin/departments", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function createDepartment(token: string, payload: { name: string }) {
-  return api.post<Department>("/admin/departments", payload, {
+  return unwrap<Department>(api.post("/admin/departments", payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function updateDepartment(
   token: string,
   departmentId: number,
-  payload: { name: string; isActive: boolean },
+  payload: { name: string },
 ) {
-  return api.patch<Department>(`/admin/departments/${departmentId}`, payload, {
+  return unwrap<Department>(api.patch(`/admin/departments/${departmentId}`, payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function deleteDepartment(token: string, departmentId: number) {
-  return api.delete<ApiMessageResponse>(`/admin/departments/${departmentId}`, {
+  return unwrap<void>(api.delete(`/admin/departments/${departmentId}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function createMenu(
@@ -275,11 +465,11 @@ export function createMenu(
     validTo: string;
   },
 ) {
-  return api.post<Menu>("/menus", payload, {
+  return unwrap<Menu>(api.post("/menus", payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function updateMenu(
@@ -295,11 +485,11 @@ export function updateMenu(
     validTo: string;
   }>,
 ) {
-  return api.patch<Menu>(`/menus/${menuId}`, payload, {
+  return unwrap<Menu>(api.patch(`/menus/${menuId}`, payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function createSupplier(
@@ -312,11 +502,11 @@ export function createSupplier(
     businessRegistrationNo: string;
   },
 ) {
-  return api.post<Supplier>("/suppliers", payload, {
+  return unwrap<Supplier>(api.post("/suppliers", payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function getSuppliers(
@@ -326,20 +516,20 @@ export function getSuppliers(
     search_type: "exact" | "fuzzy";
   }>,
 ) {
-  return api.get<Supplier[]>("/suppliers", {
+  return unwrap<Supplier[]>(api.get("/suppliers", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
     params,
-  });
+  }));
 }
 
 export function getSupplier(token: string, supplierId: number) {
-  return api.get<Supplier>(`/suppliers/${supplierId}`, {
+  return unwrap<Supplier>(api.get(`/suppliers/${supplierId}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function updateSupplier(
@@ -353,63 +543,63 @@ export function updateSupplier(
     isActive: boolean;
   },
 ) {
-  return api.patch<Supplier>(`/suppliers/${supplierId}`, payload, {
+  return unwrap<Supplier>(api.patch(`/suppliers/${supplierId}`, payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function getErrorEmails(token: string) {
-  return api.get<ErrorEmail[]>("/settings/error-emails", {
+  return unwrap<ErrorEmail[]>(api.get("/settings/error-emails", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function createErrorEmail(token: string, payload: { email: string }) {
-  return api.post<ErrorEmail>("/settings/error-emails", payload, {
+  return unwrap<ErrorEmail>(api.post("/settings/error-emails", payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function deleteErrorEmail(token: string, id: number) {
-  return api.delete<ApiMessageResponse>(`/settings/error-emails/${id}`, {
+  return unwrap<void>(api.delete(`/settings/error-emails/${id}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function getReportEmails(token: string) {
-  return api.get<ReportEmail[]>("/settings/report-emails", {
+  return unwrap<ReportEmail[]>(api.get("/settings/report-emails", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function createReportEmail(token: string, payload: { email: string }) {
-  return api.post<ReportEmail>("/settings/report-emails", payload, {
+  return unwrap<ReportEmail>(api.post("/settings/report-emails", payload, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function deleteReportEmail(token: string, id: number) {
-  return api.delete<ApiMessageResponse>(`/settings/report-emails/${id}`, {
+  return unwrap<void>(api.delete(`/settings/report-emails/${id}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }
 
 export function triggerMonthlyBilling(token: string) {
-  return api.post<MonthlyBillingTriggerResult>(
+  return unwrap<void>(api.post(
     "/admin/reports/monthly",
     {},
     {
@@ -417,13 +607,13 @@ export function triggerMonthlyBilling(token: string) {
         Authorization: `Bearer ${token}`,
       },
     },
-  );
+  ));
 }
 
 export function getMonthlyBillingLogs(token: string) {
-  return api.get<MonthlyBillingLog[]>("/admin/reports/monthly", {
+  return unwrap<MonthlyBillingLog[]>(api.get("/admin/reports/monthly", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  });
+  }));
 }

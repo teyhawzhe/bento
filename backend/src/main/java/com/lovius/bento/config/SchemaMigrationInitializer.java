@@ -19,6 +19,8 @@ public class SchemaMigrationInitializer {
             logger.info("Starting department schema migration");
             ensureDepartmentsTable(jdbcTemplate);
             ensureEmployeeDepartmentColumn(jdbcTemplate);
+            ensureRefreshTokensTable(jdbcTemplate);
+            ensureNotificationLogsTable(jdbcTemplate);
             logger.info("Department schema migration finished");
         };
     }
@@ -74,6 +76,45 @@ public class SchemaMigrationInitializer {
                     FOREIGN KEY (department_id) REFERENCES departments(id)
                     """);
         }
+    }
+
+    private void ensureRefreshTokensTable(JdbcTemplate jdbcTemplate) {
+        jdbcTemplate.execute(
+                """
+                CREATE TABLE IF NOT EXISTS refresh_tokens (
+                    id BIGINT NOT NULL AUTO_INCREMENT,
+                    employee_id BIGINT NOT NULL,
+                    token_hash VARCHAR(255) NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    is_revoked BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    UNIQUE KEY uk_refresh_tokens_token_hash (token_hash),
+                    KEY idx_refresh_tokens_employee_id (employee_id),
+                    KEY idx_refresh_tokens_expires_at (expires_at),
+                    CONSTRAINT fk_refresh_tokens_employee FOREIGN KEY (employee_id) REFERENCES employees(id)
+                )
+                """);
+        logger.info("Ensured refresh_tokens table exists");
+    }
+
+    private void ensureNotificationLogsTable(JdbcTemplate jdbcTemplate) {
+        jdbcTemplate.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notification_logs (
+                    id BIGINT NOT NULL AUTO_INCREMENT,
+                    notify_date DATE NOT NULL,
+                    email_to VARCHAR(255) NOT NULL,
+                    content TEXT NOT NULL,
+                    status VARCHAR(20) NOT NULL,
+                    error_message VARCHAR(500) NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    KEY idx_notification_logs_notify_date (notify_date),
+                    KEY idx_notification_logs_status (status)
+                )
+                """);
+        logger.info("Ensured notification_logs table exists");
     }
 
     private Long getOrCreateDefaultDepartment(JdbcTemplate jdbcTemplate) {

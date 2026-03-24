@@ -1,6 +1,6 @@
 package com.lovius.bento.exception;
 
-import com.lovius.bento.dto.ApiMessageResponse;
+import com.lovius.bento.dto.ApiFailedResponse;
 import jakarta.validation.ConstraintViolationException;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -17,14 +17,14 @@ public class GlobalExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ApiException.class)
-    public ResponseEntity<ApiMessageResponse> handleApiException(ApiException exception) {
+    public ResponseEntity<ApiFailedResponse> handleApiException(ApiException exception) {
         logger.warn("API exception: status={}, message={}", exception.getStatus(), exception.getMessage());
         return ResponseEntity.status(exception.getStatus())
-                .body(new ApiMessageResponse(exception.getMessage()));
+                .body(ApiFailedResponse.failed(exception.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiMessageResponse> handleMethodArgumentNotValidException(
+    public ResponseEntity<ApiFailedResponse> handleMethodArgumentNotValidException(
             MethodArgumentNotValidException exception) {
         String message = exception.getBindingResult()
                 .getFieldErrors()
@@ -33,21 +33,21 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining("；"));
         logger.warn("Validation failed: {}", message, exception);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(new ApiMessageResponse(message));
+                .body(ApiFailedResponse.failed(message));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiMessageResponse> handleConstraintViolationException(
+    public ResponseEntity<ApiFailedResponse> handleConstraintViolationException(
             ConstraintViolationException exception) {
         logger.warn("Constraint violation: {}", exception.getMessage(), exception);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(new ApiMessageResponse(exception.getMessage()));
+                .body(ApiFailedResponse.failed(exception.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiMessageResponse> handleException(Exception exception) {
+    public ResponseEntity<ApiFailedResponse> handleException(Exception exception) {
         logger.error("Unhandled server exception", exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ApiMessageResponse("系統發生未預期錯誤"));
+                .body(ApiFailedResponse.failed("系統發生未預期錯誤"));
     }
 }

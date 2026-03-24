@@ -1,6 +1,6 @@
 package com.lovius.bento.controller;
 
-import com.lovius.bento.dto.ApiMessageResponse;
+import com.lovius.bento.dto.ApiSuccessResponse;
 import com.lovius.bento.dto.CreateReportEmailRequest;
 import com.lovius.bento.dto.ReportEmailResponse;
 import com.lovius.bento.exception.ApiException;
@@ -36,28 +36,28 @@ public class A008Controller {
     }
 
     @GetMapping
-    public List<ReportEmailResponse> getReportEmails(
+    public ApiSuccessResponse<List<ReportEmailResponse>> getReportEmails(
             @RequestHeader("Authorization") String authorizationHeader) {
         requireAdmin(authorizationHeader);
-        return reportEmailSettingsService.getAll();
+        return ApiSuccessResponse.success(reportEmailSettingsService.getAll());
     }
 
     @PostMapping
-    public ResponseEntity<ReportEmailResponse> createReportEmail(
+    public ResponseEntity<ApiSuccessResponse<ReportEmailResponse>> createReportEmail(
             @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody CreateReportEmailRequest request) {
         AuthenticatedUser user = requireAdmin(authorizationHeader);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(reportEmailSettingsService.create(user.employeeId(), request));
+                .body(ApiSuccessResponse.success(reportEmailSettingsService.create(user.employeeId(), request)));
     }
 
     @DeleteMapping("/{id}")
-    public ApiMessageResponse deleteReportEmail(
+    public ApiSuccessResponse<Void> deleteReportEmail(
             @RequestHeader("Authorization") String authorizationHeader,
             @PathVariable("id") Long id) {
         requireAdmin(authorizationHeader);
         reportEmailSettingsService.delete(id);
-        return new ApiMessageResponse("報表收件信箱已刪除");
+        return ApiSuccessResponse.empty();
     }
 
     private AuthenticatedUser requireAdmin(String authorizationHeader) {

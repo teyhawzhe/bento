@@ -1,6 +1,6 @@
 # 公司員工訂便當系統
 
-目前已完成 A001「內部員工登入驗證」、A002「員工訂便當」、A004「錯誤通知信箱設定」與 A005「月結帳單報表與發信」第一版，包含前端登入後訂餐流程、管理員菜單維護、供應商建立、錯誤通知收件清單管理、月結報表手動觸發與發送記錄查詢，以及後續可銜接 Docker Compose 與 A003/A008 的執行邊界。
+目前已完成 A001「內部員工登入驗證」、A002「員工訂便當」、A003「每日供應商訂單通知」、A004「錯誤通知信箱設定」、A005「月結帳單報表與發信」、A006「管理員代替員工新增訂餐與查詢訂單」、A007「管理供應商」、A008「月結報表收件信箱設定」與 A010「部門管理」對齊版，包含前後端 `status/data` API 契約、refresh token 認證模型、員工與管理員主頁導向、供應商通知排程、月結報表與發送記錄查詢。
 
 ## 專案結構
 
@@ -12,7 +12,10 @@
 ## 已實作功能
 
 - 員工登入 `POST /api/auth/login`
+- 員工 refresh token 換發 `POST /api/auth/refresh`
+- 員工登出 `POST /api/auth/logout`
 - 管理員登入 `POST /api/admin/auth/login`
+- 管理員 refresh token 換發 `POST /api/admin/auth/refresh`
 - 忘記密碼 `POST /api/auth/forgot-password`
 - 修改密碼 `PATCH /api/auth/change-password`
 - 查詢員工 `GET /api/admin/employees`
@@ -29,10 +32,23 @@
 - 管理員建立菜單 `POST /api/menus`
 - 管理員編輯菜單 `PATCH /api/menus/{id}`
 - 管理員新增供應商 `POST /api/suppliers`
+- 管理員查詢供應商 `GET /api/suppliers`
+- 管理員查詢單一供應商 `GET /api/suppliers/{id}`
+- 管理員更新供應商 `PATCH /api/suppliers/{id}`
+- 管理員查詢部門 `GET /api/admin/departments`
+- 管理員建立部門 `POST /api/admin/departments`
+- 管理員更新部門 `PATCH /api/admin/departments/{id}`
+- 管理員查詢員工訂餐 `GET /api/admin/orders`
+- 管理員代替員工新增訂餐 `POST /api/admin/orders`
 - 管理員取消指定員工訂餐 `DELETE /api/admin/orders/{id}`
+- 管理員查詢供應商與便當選項 `GET /api/admin/suppliers`
 - 管理員查詢錯誤通知信箱 `GET /api/settings/error-emails`
 - 管理員新增錯誤通知信箱 `POST /api/settings/error-emails`
 - 管理員刪除錯誤通知信箱 `DELETE /api/settings/error-emails/{id}`
+- 管理員查詢報表收件信箱 `GET /api/settings/report-emails`
+- 管理員新增報表收件信箱 `POST /api/settings/report-emails`
+- 管理員刪除報表收件信箱 `DELETE /api/settings/report-emails/{id}`
+- 每日供應商通知排程 `A003 / 每日 17:00`
 - 管理員手動觸發月結報表 `POST /api/admin/reports/monthly`
 - 管理員查詢月結發送記錄 `GET /api/admin/reports/monthly`
 
@@ -44,16 +60,16 @@
 
 ## 目前假設
 
-- A001/A002 目前採 JDBC + `schema.sql` 管理 `employees`、`suppliers`、`menus`、`orders`
+- 後端目前採 JDBC + `schema.sql` 管理 `departments`、`employees`、`refresh_tokens`、`suppliers`、`menus`、`orders`、`error_notification_emails`、`report_recipient_emails`、`notification_logs`、`monthly_billing_logs`
 - Email 發送先以服務 stub 模擬，尚未串 SMTP
-- 管理員取消訂餐截止時間先固定為訂餐日前一日 17:00，供後續 A003 排程沿用
-- A004 已提供 `ErrorNotificationRecipientProvider`，讓 A003 排程可直接讀取錯誤通知收件清單
-- A005 已提供 `BillingReportRecipientProvider`，讓 A008 報表收件清單未來可直接接入月結發信流程
-- 真實部署設定、供應商正式通知與月結報表可在 A003/A005 之後接續補強
+- 管理員代訂與取消截止時間為訂餐日前一日 16:30；A003 供應商通知排程為每日 17:00
+- API JSON 欄位已統一對齊 `snake_case`，前端內部則維持 `camelCase` 使用
+- A004 已提供 `ErrorNotificationRecipientProvider`，A003 排程會直接讀取錯誤通知收件清單
+- A005 已提供 `BillingReportRecipientProvider`，A008 報表收件清單已接入月結發信流程
 
 ## 啟動方式
 
-目前專案已包含 `backend/build.gradle` 與 Gradle Wrapper，可直接在 `backend` 透過 `./gradlew` 執行建置；前端相依套件仍尚未安裝，因此這一版先提供完整原始碼結構與容器化配置。
+目前專案已包含 `backend/build.gradle` 與 Gradle Wrapper，可直接在 `backend` 透過 `./gradlew` 執行建置；前端可在 `frontend` 以 `npm` 啟動或打包。
 
 建議啟動方式：
 
@@ -85,30 +101,30 @@
 
 ## 驗證紀錄
 
-- 已依 OpenSpec A001 規格逐項對照員工登入、管理員登入、忘記密碼、修改密碼、查詢員工、新增員工、CSV 匯入、停用啟用與重設密碼流程。
-- 已依 A002 規格補上員工查詢下週便當、訂餐/改單/取消、個人訂餐記錄、管理員新增供應商、建立菜單、查詢含歷史菜單與編輯菜單流程。
+- 已依 OpenSpec A001 規格逐項對照員工登入、管理員登入、refresh token、忘記密碼、修改密碼、查詢員工、新增員工、CSV 匯入、停用啟用與重設密碼流程。
+- 已依 A002 / A006 / A007 / A010 規格補上員工查詢便當、訂餐/改單/取消、個人訂餐記錄、管理員查單與代訂、供應商管理、部門管理、建立菜單、查詢含歷史菜單與編輯菜單流程。
+- 已依 A003 規格補上每日 17:00 供應商通知排程、`notification_logs` 記錄、供應商通知失敗/異常/系統錯誤時的 A004 錯誤通知信箱發送。
 - 已依 A004 規格補上管理員查詢、新增、刪除錯誤通知信箱 API 與前端設定頁。
-- 已依 A005 規格補上月結期間計算、手動觸發月結報表、月結發送記錄查詢與管理員前端入口。
-- 已修正狀態切換 API 的請求格式相容性，後端可同時接受 `is_active` 與 `isActive`。
-- 已補齊前端登入後分流：員工進入訂餐頁、管理員進入菜單管理頁，且員工端不顯示價格資訊。
+- 已依 A005 / A008 規格補上月結期間計算、手動觸發月結報表、月結發送記錄查詢、報表收件信箱設定與管理員前端入口。
+- 已補齊前端登入後分流：員工進入「訂便當 / 我的訂單」，管理員進入訂單管理頁，且員工端不顯示價格資訊。
+- 已確認 `frontend` 的 `npm run build` 與 `backend` 的 `./gradlew test` 可成功執行。
 - `docker compose config` 已通過，可確認 compose 結構正確。
-- 已補上 Gradle Wrapper，並確認 `cd backend && ./gradlew test` 可成功執行。
-- 目前尚未完成真正的瀏覽器互動驗證與完整 API 情境驗證，原因是 workspace 尚未完成前端依賴安裝，且本機尚未啟動可供 Spring Boot 連線的 MySQL 服務。
+- 目前尚未完成真正的瀏覽器 E2E 驗證與實際 SMTP / MySQL 整合驗證。
 
-## A003 / A006 邊界
+## A003 / A005 / A006 邊界
 
-- `suppliers.email`、`menus.supplier_id` 與 `orders.order_date` 已保留 A003 依供應商彙整隔日訂單並寄信所需欄位。
-- `error_notification_emails` 與 `ErrorNotificationRecipientProvider` 已保留 A003 排程失敗時的錯誤通知收件來源。
-- `monthly_billing_logs`、`BillingReportRecipientProvider` 與管理員月結入口已保留 A008 報表收件清單與月結通知整合邊界。
-- `orders.created_by` 已保留 A006 管理員代替員工新增訂餐時的操作者資訊。
-- `orders.employee_id` 與 `orders.order_date` 的唯一鍵，讓未來 A006 代訂仍可沿用同一日覆蓋規則。
+- A003 會從隔日 `orders`、`menus`、`suppliers` 彙總供應商通知內容，並將結果寫入 `notification_logs`
+- A003 發送失敗、異常或系統錯誤時，會透過 `ErrorNotificationRecipientProvider` 讀取 `error_notification_emails`
+- A005 仍持續使用 `monthly_billing_logs`，沒有與 A003 共用記錄表
+- A006 的 `orders.created_by` 已保留管理員代訂時的操作者資訊
+- `orders.employee_id` 與 `orders.order_date` 的唯一鍵仍保留單一員工同日單筆訂單規則
 
 ## CSV 格式
 
 匯入檔案需包含 header：
 
 ```csv
-username,name,email
-jane.hsu,Jane Hsu,jane@company.local
-tom.lee,Tom Lee,tom@company.local
+username,name,email,department
+jane.hsu,Jane Hsu,jane@company.local,Operations
+tom.lee,Tom Lee,tom@company.local,Finance
 ```

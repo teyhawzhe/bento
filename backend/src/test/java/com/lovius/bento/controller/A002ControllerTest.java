@@ -1,10 +1,8 @@
 package com.lovius.bento.controller;
 
-import com.lovius.bento.dto.AdminOrderResponse;
 import com.lovius.bento.dto.AdminSupplierMenuOptionResponse;
 import com.lovius.bento.dto.AdminSupplierResponse;
 import com.lovius.bento.dto.CreateAdminOrderRequest;
-import com.lovius.bento.dto.EmployeeMenuCatalogResponse;
 import com.lovius.bento.dto.EmployeeMenuOptionResponse;
 import com.lovius.bento.dto.OrderResponse;
 import com.lovius.bento.dto.SupplierResponse;
@@ -51,21 +49,19 @@ class A002ControllerTest {
     void getEmployeeMenusReturnsOrderableDatesAndMenus() throws Exception {
         Mockito.when(tokenService.parseToken("Bearer employee-token"))
                 .thenReturn(new AuthenticatedUser(2L, "alice", "employee"));
-        Mockito.when(menuService.getEmployeeMenuCatalogForEmployee()).thenReturn(new EmployeeMenuCatalogResponse(
-                List.of(LocalDate.of(2026, 3, 24), LocalDate.of(2026, 3, 25)),
-                List.of(new EmployeeMenuOptionResponse(
+        Mockito.when(menuService.getEmployeeMenusForEmployee()).thenReturn(List.of(
+                new EmployeeMenuOptionResponse(
                         20L,
                         "香烤雞腿便當",
                         "肉類",
                         "附三樣配菜",
                         LocalDate.of(2026, 3, 24),
-                        LocalDate.of(2026, 3, 31)))));
+                        LocalDate.of(2026, 3, 31))));
 
         mockMvc.perform(MockMvcRequestBuilders.get("/api/orders/menu")
                         .header("Authorization", "Bearer employee-token"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.orderableDates[0]").value("2026-03-24"))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.menus[0].name").value("香烤雞腿便當"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].name").value("香烤雞腿便當"));
     }
 
     @Test
@@ -90,8 +86,8 @@ class A002ControllerTest {
                         .param("include_history", "true")
                         .param("supplier_id", "5"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].supplierId").value(5))
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].name").value("招牌便當"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].supplier_id").value(5))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].name").value("招牌便當"));
     }
 
     @Test
@@ -102,7 +98,7 @@ class A002ControllerTest {
         mockMvc.perform(MockMvcRequestBuilders.get("/api/admin/orders")
                         .header("Authorization", "Bearer employee-token"))
                 .andExpect(MockMvcResultMatchers.status().isForbidden())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("權限不足"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.message").value("權限不足"));
     }
 
     @Test
@@ -110,18 +106,14 @@ class A002ControllerTest {
         Mockito.when(tokenService.parseToken("Bearer admin-token"))
                 .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
         Mockito.when(orderService.getAdminOrders(LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 3), 2L))
-                .thenReturn(List.of(new AdminOrderResponse(
+                .thenReturn(List.of(new OrderResponse(
                         8L,
                         2L,
                         "Alice Chen",
                         20L,
                         "香烤雞腿便當",
-                        5L,
-                        "好食便當",
-                        new BigDecimal("120.00"),
                         LocalDate.of(2026, 4, 1),
                         1L,
-                        "System Admin",
                         Instant.parse("2026-03-31T08:30:00Z"))));
 
         mockMvc.perform(MockMvcRequestBuilders.get("/api/admin/orders")
@@ -130,9 +122,9 @@ class A002ControllerTest {
                         .param("date_to", "2026-04-03")
                         .param("employee_id", "2"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].employeeName").value("Alice Chen"))
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].supplierName").value("好食便當"))
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].createdByName").value("System Admin"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].employee_name").value("Alice Chen"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].menu_name").value("香烤雞腿便當"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].created_by").value(1));
     }
 
     @Test
@@ -155,14 +147,14 @@ class A002ControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "employeeId": 2,
-                                  "menuId": 20,
-                                  "orderDate": "2026-04-01"
+                                  "employee_id": 2,
+                                  "menu_id": 20,
+                                  "order_date": "2026-04-01"
                                 }
                                 """))
                 .andExpect(MockMvcResultMatchers.status().isCreated())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.employeeId").value(2))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.createdBy").value(1));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.employee_id").value(2))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.created_by").value(1));
     }
 
     @Test
@@ -173,7 +165,7 @@ class A002ControllerTest {
         mockMvc.perform(MockMvcRequestBuilders.get("/api/suppliers")
                         .header("Authorization", "Bearer employee-token"))
                 .andExpect(MockMvcResultMatchers.status().isForbidden())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("權限不足"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.message").value("權限不足"));
     }
 
     @Test
@@ -196,7 +188,7 @@ class A002ControllerTest {
                         .param("name", "好食")
                         .param("search_type", "fuzzy"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].name").value("好食便當"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].name").value("好食便當"));
     }
 
     @Test
@@ -226,8 +218,8 @@ class A002ControllerTest {
         mockMvc.perform(MockMvcRequestBuilders.get("/api/admin/suppliers")
                         .header("Authorization", "Bearer admin-token"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].name").value("好食便當"))
-                .andExpect(MockMvcResultMatchers.jsonPath("$[0].menuOptions[0].name").value("雞腿便當"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].name").value("好食便當"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].menu_options[0].name").value("雞腿便當"));
     }
 
     @Test
@@ -247,7 +239,7 @@ class A002ControllerTest {
         mockMvc.perform(MockMvcRequestBuilders.get("/api/suppliers/5")
                         .header("Authorization", "Bearer admin-token"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.businessRegistrationNo").value("12345678"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.business_registration_no").value("12345678"));
     }
 
     @Test
@@ -263,13 +255,13 @@ class A002ControllerTest {
                                   "name": "新供應商名稱",
                                   "email": "vendor@company.local",
                                   "phone": "02-8888-0000",
-                                  "contactPerson": "聯絡人",
-                                  "isActive": true,
-                                  "businessRegistrationNo": "99999999"
+                                  "contact_person": "聯絡人",
+                                  "is_active": true,
+                                  "business_registration_no": "99999999"
                                 }
                                 """))
                 .andExpect(MockMvcResultMatchers.status().isBadRequest())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("營業登記編號不可修改"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.message").value("營業登記編號不可修改"));
     }
 
     @Test
@@ -294,12 +286,12 @@ class A002ControllerTest {
                                   "name": "新供應商名稱",
                                   "email": "vendor@company.local",
                                   "phone": "02-8888-0000",
-                                  "contactPerson": "聯絡人",
-                                  "isActive": false
+                                  "contact_person": "聯絡人",
+                                  "is_active": false
                                 }
                                 """))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.name").value("新供應商名稱"))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.isActive").value(false));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.name").value("新供應商名稱"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.is_active").value(false));
     }
 }
