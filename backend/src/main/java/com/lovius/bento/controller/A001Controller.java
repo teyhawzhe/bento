@@ -11,6 +11,8 @@ import com.lovius.bento.dto.ImportEmployeesResponse;
 import com.lovius.bento.dto.LoginRequest;
 import com.lovius.bento.dto.LoginResponse;
 import com.lovius.bento.dto.ResetEmployeePasswordRequest;
+import com.lovius.bento.dto.UpdateEmployeeRequest;
+import com.lovius.bento.dto.UpdateEmployeeResponse;
 import com.lovius.bento.exception.ApiException;
 import com.lovius.bento.security.AuthenticatedUser;
 import com.lovius.bento.service.AuthService;
@@ -102,6 +104,15 @@ public class A001Controller {
         return employeeService.importEmployees(file);
     }
 
+    @PatchMapping("/admin/employees/{id}")
+    public UpdateEmployeeResponse updateEmployee(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @PathVariable("id") Long employeeId,
+            @Valid @RequestBody UpdateEmployeeRequest request) {
+        requireRole(authorizationHeader, "admin");
+        return employeeService.updateEmployee(employeeId, request);
+    }
+
     @PatchMapping("/admin/employees/{id}/status")
     public EmployeeSummaryResponse updateEmployeeStatus(
             @RequestHeader("Authorization") String authorizationHeader,
@@ -123,7 +134,7 @@ public class A001Controller {
     private AuthenticatedUser requireRole(String authorizationHeader, String expectedRole) {
         AuthenticatedUser authenticatedUser = tokenService.parseToken(authorizationHeader);
         if (!expectedRole.equals(authenticatedUser.role())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "權限不足");
+            throw new ApiException(HttpStatus.FORBIDDEN, "沒有操作權限");
         }
         return authenticatedUser;
     }

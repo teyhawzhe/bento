@@ -230,6 +230,8 @@ class OrderServiceTest {
     private Employee employee(Long id, String name) {
         return new Employee(
                 id,
+                1L,
+                "Operations",
                 "alice",
                 "hash",
                 name,

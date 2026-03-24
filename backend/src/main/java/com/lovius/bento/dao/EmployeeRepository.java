@@ -17,5 +17,7 @@ public interface EmployeeRepository {
 
     boolean existsByEmail(String email);
 
+    boolean existsByDepartmentId(Long departmentId);
+
     Employee save(Employee employee);
 }

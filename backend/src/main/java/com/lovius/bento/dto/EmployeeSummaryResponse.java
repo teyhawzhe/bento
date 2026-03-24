@@ -7,6 +7,7 @@ public record EmployeeSummaryResponse(
         String username,
         String name,
         String email,
+        DepartmentSummaryResponse department,
         boolean isAdmin,
         boolean isActive,
         Instant createdAt,

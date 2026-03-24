@@ -22,6 +22,7 @@ export interface EmployeeSummary {
   username: string;
   name: string;
   email: string;
+  department: Department;
   isAdmin: boolean;
   isActive: boolean;
   createdAt: string;
@@ -64,27 +65,12 @@ export interface Supplier {
   createdAt: string;
 }
 
-export interface AdminSupplierMenuOption {
+export interface Department {
   id: number;
   name: string;
-  category: string;
-  description: string;
-  price: number;
-  validFrom: string;
-  validTo: string;
-  updatedAt: string;
-}
-
-export interface AdminSupplier {
-  id: number;
-  name: string;
-  email: string;
-  phone: string;
-  contactPerson: string;
-  businessRegistrationNo: string;
   isActive: boolean;
-  createdAt: string;
-  menuOptions: AdminSupplierMenuOption[];
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 export interface ErrorEmail {

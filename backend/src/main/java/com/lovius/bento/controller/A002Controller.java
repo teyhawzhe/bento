@@ -101,9 +101,10 @@ public class A002Controller {
     @GetMapping("/menus")
     public List<MenuResponse> getMenus(
             @RequestHeader("Authorization") String authorizationHeader,
-            @RequestParam(name = "include_history", defaultValue = "false") boolean includeHistory) {
+            @RequestParam(name = "include_history", defaultValue = "false") boolean includeHistory,
+            @RequestParam(name = "supplier_id", required = false) Long supplierId) {
         requireRole(authorizationHeader, "admin");
-        return menuService.getMenus(includeHistory);
+        return menuService.getMenus(includeHistory, supplierId);
     }
 
     @PostMapping("/menus")

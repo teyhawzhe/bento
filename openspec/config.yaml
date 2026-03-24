@@ -23,6 +23,8 @@ project: 公司員工訂便當系統
 其他限制:
   - 不能修改../uml內的文件
   - 文件以中文為主,英文為輔
+  - 文件編碼只能是UTF8
+  - 後端需要LOG尤其是有exception
 
 執行:
   - 前後端程式編譯後,可以放入docker,以docker-compose.yml 開啟
