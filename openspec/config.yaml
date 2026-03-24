@@ -2,8 +2,8 @@ schema: spec-driven
 
 project: 公司員工訂便當系統
 技術:
-  前端: react,tailwild,vite
-  後端: java 21,springboot
+  前端: react,tailwind,vite
+  後端: java 21,Spring Boot
   資料庫: mysql
   容器: docker (補充,以docker-compose.yml,把前端,後端,資料庫放入)
   開發環境: dev,staging,production
@@ -16,7 +16,7 @@ project: 公司員工訂便當系統
     - 禁止使用import static 
     - DTO只能用java record 
     - package分別有controller , service , dao 
-    - controller內的class以需求文件位名, 例如文件是A001,名字是A001Controller.java 
+    - controller內的class以需求文件檔名, 例如文件是A001,名字是A001Controller.java 
     - service的命名方式以資料表為主,以主表為主,例如table是member , 名字是MemberService
     - dao 以table名字加上repository
 
@@ -29,7 +29,7 @@ project: 公司員工訂便當系統
 執行:
   - 前後端程式編譯後,可以放入docker,以docker-compose.yml 開啟
 
-需求文件路徑: ../uml
+需求文件路徑: ../uml,開發請參考,input內的規格,output內的puml,API設計請參考openapi.yaml ,*代表必填
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.
