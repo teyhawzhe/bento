@@ -13,4 +13,6 @@ COPY --from=builder /workspace/build/libs/*.jar app.jar
 
 EXPOSE 8080
 
+ENV SPRING_PROFILES_ACTIVE=production
+
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

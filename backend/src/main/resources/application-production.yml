@@ -1,0 +1,4 @@
+app:
+  mail:
+    mode: smtp
+    from: ${APP_MAIL_FROM:production-mail@lovius.local}

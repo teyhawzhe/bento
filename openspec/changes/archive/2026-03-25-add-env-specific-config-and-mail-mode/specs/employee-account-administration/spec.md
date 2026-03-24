@@ -1,7 +1,5 @@
-## Purpose
-定義管理員建立、查詢、匯入、更新員工資料與重設密碼時，需符合的 OpenAPI 契約與 refresh token 作廢規則。
+## MODIFIED Requirements
 
-## Requirements
 ### Requirement: 員工管理 API 必須對齊 OpenAPI 回應契約
 系統 SHALL 讓 `/api/admin/employees`、`/api/admin/employees/{id}`、`/api/admin/employees/import`、`/api/admin/employees/{id}/status` 與 `/api/admin/employees/{id}/reset-password` 的成功與失敗回應符合 `../uml/openapi.yaml` 定義的 `status/data` 契約。管理員重設密碼成功時，系統 MUST 作廢目標員工所有未失效的 refresh token。
 

@@ -1,0 +1,4 @@
+app:
+  mail:
+    mode: smtp
+    from: ${APP_MAIL_FROM:staging-mail@lovius.local}

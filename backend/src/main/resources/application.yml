@@ -7,8 +7,20 @@ app:
     issuer: "lovius-bento"
     expiration-minutes: 240
     refresh-expiration-days: 14
+  mail:
+    mode: ${APP_MAIL_MODE:mock}
+    from: ${APP_MAIL_FROM:no-reply@lovius.local}
+    smtp:
+      host: ${APP_MAIL_SMTP_HOST:smtp.gmail.com}
+      port: ${APP_MAIL_SMTP_PORT:587}
+      username: ${APP_MAIL_SMTP_USERNAME:}
+      password: ${APP_MAIL_SMTP_PASSWORD:}
+      auth: ${APP_MAIL_SMTP_AUTH:true}
+      starttls: ${APP_MAIL_SMTP_STARTTLS:true}
 
 spring:
+  profiles:
+    default: dev
   jackson:
     property-naming-strategy: SNAKE_CASE
   datasource:

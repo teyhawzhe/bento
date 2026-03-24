@@ -1,0 +1,4 @@
+app:
+  mail:
+    mode: mock
+    from: ${APP_MAIL_FROM:dev-mail@lovius.local}

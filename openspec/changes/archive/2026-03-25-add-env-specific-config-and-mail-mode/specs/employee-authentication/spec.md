@@ -1,7 +1,5 @@
-## Purpose
-定義員工與管理員登入、refresh、登出與修改密碼時的認證契約，以及 refresh token 的輪替與作廢規則。
+## MODIFIED Requirements
 
-## Requirements
 ### Requirement: 員工登入與登出
 系統 SHALL 提供專屬的員工登入入口 `/login`，並透過 `POST /api/auth/login` 驗證員工帳號密碼。當驗證成功時，系統 SHALL 同時發放 `role=employee` 的 access token 與 refresh token，並以 OpenAPI 定義的 `status/data` 格式回傳。系統 SHALL 提供 `POST /api/auth/refresh` 讓員工以有效 refresh token 換發新的 access token 與新的 refresh token，且舊 refresh token MUST 立即作廢。系統 SHALL 提供登出動作，於 `POST /api/auth/logout` 作廢目前 refresh token，並讓前端清除登入狀態後返回登入頁。當員工成功登入後，前端 SHALL 導向 A009 定義的員工 TAB 主頁。
 

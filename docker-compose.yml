@@ -11,10 +11,16 @@ services:
     build:
       context: ./backend
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bento?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Taipei
       SPRING_DATASOURCE_USERNAME: bento
       SPRING_DATASOURCE_PASSWORD: bento
+      APP_MAIL_MODE: ${APP_MAIL_MODE:-mock}
+      APP_MAIL_FROM: ${APP_MAIL_FROM:-dev-mail@lovius.local}
+      APP_MAIL_SMTP_HOST: ${APP_MAIL_SMTP_HOST:-smtp.gmail.com}
+      APP_MAIL_SMTP_PORT: ${APP_MAIL_SMTP_PORT:-587}
+      APP_MAIL_SMTP_USERNAME: ${APP_MAIL_SMTP_USERNAME:-}
+      APP_MAIL_SMTP_PASSWORD: ${APP_MAIL_SMTP_PASSWORD:-}
     ports:
       - "8080:8080"
     depends_on:

@@ -61,7 +61,7 @@
 ## 目前假設
 
 - 後端目前採 JDBC + `schema.sql` 管理 `departments`、`employees`、`refresh_tokens`、`suppliers`、`menus`、`orders`、`error_notification_emails`、`report_recipient_emails`、`notification_logs`、`monthly_billing_logs`
-- Email 發送先以服務 stub 模擬，尚未串 SMTP
+- Email 發送已支援 `config-based` 的 `mock` / `smtp` 兩種模式，`dev` 預設使用 `mock`，`staging` / `production` 預設使用 `smtp`
 - 管理員代訂與取消截止時間為訂餐日前一日 16:30；A003 供應商通知排程為每日 17:00
 - API JSON 欄位已統一對齊 `snake_case`，前端內部則維持 `camelCase` 使用
 - A004 已提供 `ErrorNotificationRecipientProvider`，A003 排程會直接讀取錯誤通知收件清單
@@ -70,6 +70,75 @@
 ## 啟動方式
 
 目前專案已包含 `backend/build.gradle` 與 Gradle Wrapper，可直接在 `backend` 透過 `./gradlew` 執行建置；前端可在 `frontend` 以 `npm` 啟動或打包。
+
+### 環境設定
+
+backend 目前支援 3 組環境 profile：
+
+- `dev`
+- `staging`
+- `production`
+
+預設 profile：
+
+- 本機直接啟動 backend：`dev`
+- Docker image 預設：`production`
+- `docker compose` 預設：`dev`
+
+可透過 `SPRING_PROFILES_ACTIVE` 指定目標環境，例如：
+
+```bash
+SPRING_PROFILES_ACTIVE=dev ./scripts/backend-dev.sh
+cd backend && SPRING_PROFILES_ACTIVE=staging ./gradlew bootRun
+cd backend && SPRING_PROFILES_ACTIVE=production ./gradlew bootRun
+```
+
+也可以直接使用環境腳本：
+
+```bash
+./scripts/backend-dev.sh
+./scripts/backend-staging.sh
+./scripts/backend-production.sh
+```
+
+Windows 可使用：
+
+```bat
+scripts\backend-dev.bat
+scripts\backend-staging.bat
+scripts\backend-production.bat
+```
+
+### Mail 設定
+
+mail delivery 採 `config-based` 切換：
+
+- `APP_MAIL_MODE=mock`
+- `APP_MAIL_MODE=smtp`
+
+共用 SMTP 設定欄位：
+
+- `APP_MAIL_FROM`
+- `APP_MAIL_SMTP_HOST`
+- `APP_MAIL_SMTP_PORT`
+- `APP_MAIL_SMTP_USERNAME`
+- `APP_MAIL_SMTP_PASSWORD`
+- `APP_MAIL_SMTP_AUTH`
+- `APP_MAIL_SMTP_STARTTLS`
+
+Gmail SMTP 測試範例：
+
+```bash
+cd backend
+SPRING_PROFILES_ACTIVE=staging \
+APP_MAIL_MODE=smtp \
+APP_MAIL_FROM=your-account@gmail.com \
+APP_MAIL_SMTP_HOST=smtp.gmail.com \
+APP_MAIL_SMTP_PORT=587 \
+APP_MAIL_SMTP_USERNAME=your-account@gmail.com \
+APP_MAIL_SMTP_PASSWORD=your-app-password \
+./gradlew bootRun
+```
 
 建議啟動方式：
 
@@ -83,12 +152,13 @@
 
 ```bash
 ./scripts/dev-frontend.sh
-./scripts/dev-backend.sh
+./scripts/backend-dev.sh
 ./scripts/dev-compose.sh
 ```
 
 - `dev-frontend.sh`: 自動安裝前端依賴後啟動 Vite
-- `dev-backend.sh`: 優先使用 `./gradlew`，其次使用系統 `gradle`
+- `backend-dev.sh` / `backend-staging.sh` / `backend-production.sh`: 直接以指定 profile 啟動 backend
+- `backend-dev.bat` / `backend-staging.bat` / `backend-production.bat`: Windows 版本的 backend 啟動腳本
 - `dev-compose.sh`: 直接執行 `docker compose up --build`
 
 ## Docker Compose
@@ -98,6 +168,7 @@
 - `mysql`: 預留 MySQL 8.4 服務，對外開放 `3306`
 
 目前後端已改為 JDBC + MySQL schema 邊界，`mysql` 服務可直接承接 `employees`、`suppliers`、`menus`、`orders` 等資料表。
+`docker compose` 會預設注入 `SPRING_PROFILES_ACTIVE=dev` 與 `APP_MAIL_MODE=mock`，也可在執行前自行覆寫。
 
 ## 驗證紀錄
 
@@ -107,9 +178,10 @@
 - 已依 A004 規格補上管理員查詢、新增、刪除錯誤通知信箱 API 與前端設定頁。
 - 已依 A005 / A008 規格補上月結期間計算、手動觸發月結報表、月結發送記錄查詢、報表收件信箱設定與管理員前端入口。
 - 已補齊前端登入後分流：員工進入「訂便當 / 我的訂單」，管理員進入訂單管理頁，且員工端不顯示價格資訊。
+- 已補上 `dev / staging / production` 三組 backend 環境設定與 `mock / smtp` mail mode 切換。
 - 已確認 `frontend` 的 `npm run build` 與 `backend` 的 `./gradlew test` 可成功執行。
 - `docker compose config` 已通過，可確認 compose 結構正確。
-- 目前尚未完成真正的瀏覽器 E2E 驗證與實際 SMTP / MySQL 整合驗證。
+- 目前尚未完成真正的瀏覽器 E2E 驗證與實際外部 SMTP / MySQL 整合驗證。
 
 ## A003 / A005 / A006 邊界
 
