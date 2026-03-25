@@ -16,6 +16,7 @@ import {
   createSupplier,
   deleteErrorEmail,
   deleteReportEmail,
+  downloadImportTemplate,
   forgotPassword,
   getAdminOrders,
   getDepartments,
@@ -28,7 +29,7 @@ import {
   getMyOrders,
   getSupplier,
   getSuppliers,
-  importEmployees,
+  importAdminCsv,
   login,
   logout as logoutRequest,
   updateEmployee,
@@ -42,11 +43,13 @@ import {
 } from "./api";
 import type {
   AdminOrder,
+  CsvImportErrorData,
+  CsvImportRow,
+  CsvImportType,
   Department,
   EmployeeMenuOption,
   EmployeeSummary,
   ErrorEmail,
-  ImportEmployeesResponse,
   Menu,
   MonthlyBillingLog,
   Order,
@@ -66,6 +69,7 @@ const ADMIN_TABS = [
   { id: "admin-orders", label: "訂單管理" },
   { id: "admin-suppliers", label: "供應商管理" },
   { id: "admin-reports", label: "報表設定" },
+  { id: "admin-import", label: "CSV 匯入" },
   { id: "admin-settings", label: "系統設定" },
 ] as const;
 const ADMIN_SUPPLIER_TABS = [
@@ -74,8 +78,71 @@ const ADMIN_SUPPLIER_TABS = [
 ] as const;
 const ADMIN_SETTINGS_TABS = [
   { id: "employee-create", label: "新增員工帳號" },
-  { id: "employee-import", label: "CSV 匯入" },
   { id: "department-management", label: "部門管理" },
+] as const;
+const CSV_IMPORT_CARDS: Array<{
+  type: CsvImportType;
+  title: string;
+  header: string;
+  description: string;
+  columns: Array<{ key: string; label: string }>;
+}> = [
+  {
+    type: "employees",
+    title: "員工 CSV",
+    header: "username,name,email,department_id",
+    description: "驗證 username、email 與 department_id，匯入後員工固定為一般啟用帳號。",
+    columns: [
+      { key: "id", label: "ID" },
+      { key: "username", label: "帳號" },
+      { key: "name", label: "姓名" },
+      { key: "email", label: "Email" },
+      { key: "departmentId", label: "部門 ID" },
+      { key: "isAdmin", label: "管理員" },
+      { key: "isActive", label: "啟用" },
+    ],
+  },
+  {
+    type: "departments",
+    title: "部門 CSV",
+    header: "name",
+    description: "驗證部門名稱必填且唯一，成功後回傳本次建立的部門清單。",
+    columns: [
+      { key: "id", label: "ID" },
+      { key: "name", label: "部門名稱" },
+    ],
+  },
+  {
+    type: "suppliers",
+    title: "供應商 CSV",
+    header: "name,email,phone,contact_person,business_registration_no",
+    description: "驗證統編唯一性，並回傳本次建立的供應商清單。",
+    columns: [
+      { key: "id", label: "ID" },
+      { key: "name", label: "名稱" },
+      { key: "email", label: "Email" },
+      { key: "phone", label: "電話" },
+      { key: "contactPerson", label: "聯絡人" },
+      { key: "businessRegistrationNo", label: "統編" },
+      { key: "isActive", label: "啟用" },
+    ],
+  },
+  {
+    type: "menus",
+    title: "菜單 CSV",
+    header: "supplier_id,name,category,description,price,valid_from,valid_to",
+    description: "驗證供應商存在、名稱唯一性與日期區間，成功後回傳本次建立的菜單清單。",
+    columns: [
+      { key: "id", label: "ID" },
+      { key: "supplierId", label: "供應商 ID" },
+      { key: "name", label: "名稱" },
+      { key: "category", label: "分類" },
+      { key: "description", label: "描述" },
+      { key: "price", label: "價格" },
+      { key: "validFrom", label: "起日" },
+      { key: "validTo", label: "迄日" },
+    ],
+  },
 ] as const;
 
 type EmployeeTabId = (typeof EMPLOYEE_TABS)[number]["id"];
@@ -370,8 +437,9 @@ export default function App() {
   const [reportEmails, setReportEmails] = useState<ReportEmail[]>([]);
   const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
   const [monthlyBillingLogs, setMonthlyBillingLogs] = useState<MonthlyBillingLog[]>([]);
-  const [importResult, setImportResult] = useState<ImportEmployeesResponse | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [csvImportFiles, setCsvImportFiles] = useState<Partial<Record<CsvImportType, File | null>>>({});
+  const [csvImportResults, setCsvImportResults] = useState<Partial<Record<CsvImportType, CsvImportRow[]>>>({});
+  const [csvImportErrors, setCsvImportErrors] = useState<Partial<Record<CsvImportType, CsvImportErrorData | null>>>({});
   const [deadlineMessage, setDeadlineMessage] = useState("");
 
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
@@ -453,8 +521,9 @@ export default function App() {
     setMonthlyBillingLogs([]);
     setSelectedSupplier(null);
     setDeadlineMessage("");
-    setImportResult(null);
-    setSelectedFile(null);
+    setCsvImportFiles({});
+    setCsvImportResults({});
+    setCsvImportErrors({});
     setActiveTab(defaultTabForRole("employee"));
   }
 
@@ -992,19 +1061,63 @@ export default function App() {
     }
   }
 
-  async function submitImportEmployees() {
-    if (!session || !selectedFile) {
+  function readImportErrorData(unknownError: unknown, fallbackMessage: string): CsvImportErrorData {
+    if (!axios.isAxiosError(unknownError)) {
+      return { message: fallbackMessage };
+    }
+    const rawData = unknownError.response?.data as
+      | { data?: { message?: string; failed_at_line?: number; failedAtLine?: number; reason?: string } }
+      | undefined;
+    return {
+      message: rawData?.data?.message ?? fallbackMessage,
+      failedAtLine: rawData?.data?.failedAtLine ?? rawData?.data?.failed_at_line,
+      reason: rawData?.data?.reason,
+    };
+  }
+
+  async function handleDownloadCsvTemplate(type: CsvImportType) {
+    if (!session) {
+      return;
+    }
+    const card = CSV_IMPORT_CARDS.find((entry) => entry.type === type);
+    setLoading(true);
+    try {
+      const content = await downloadImportTemplate(session.token, type);
+      const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `${type}-template.csv`;
+      anchor.click();
+      window.URL.revokeObjectURL(objectUrl);
+      openSuccessBox(`${card?.title ?? "CSV"} 範本已下載。`, "下載完成");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "CSV 範本下載失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitCsvImport(type: CsvImportType) {
+    if (!session) {
+      return;
+    }
+    const file = csvImportFiles[type];
+    if (!file) {
       openWarningBox("請先選擇 CSV 檔案。");
       return;
     }
     setLoading(true);
     try {
-      const response = await importEmployees(session.token, selectedFile);
-      setImportResult(response.data);
-      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
-      openSuccessBox(response.data.message, "匯入完成");
+      const response = await importAdminCsv(session.token, type, file);
+      setCsvImportResults((current) => ({ ...current, [type]: response.data }));
+      setCsvImportErrors((current) => ({ ...current, [type]: null }));
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters, employeeDepartmentFilter);
+      openSuccessBox(`CSV 匯入成功，共 ${response.data.length} 筆。`, "匯入完成");
     } catch (unknownError) {
-      handleHttpError(unknownError, "CSV 匯入失敗");
+      const errorData = readImportErrorData(unknownError, "CSV 匯入失敗");
+      setCsvImportErrors((current) => ({ ...current, [type]: errorData }));
+      openErrorBox(errorData.message, "匯入失敗");
     } finally {
       setLoading(false);
     }
@@ -1619,7 +1732,7 @@ export default function App() {
 
   const introText = session
     ? session.role === "admin"
-      ? "管理員登入後會直接進入訂單管理 TAB，並可切換供應商管理、報表設定與系統設定。"
+      ? "管理員登入後會直接進入訂單管理 TAB，並可切換供應商管理、報表設定、CSV 匯入與系統設定。"
       : "員工登入後會直接進入訂便當 TAB，並可切換到「我的訂單」查看訂單與修改密碼。"
     : "登入成功後，系統會依帳號角色直接導向對應的 TAB 主頁，不再顯示員工入口或管理員入口選擇頁。";
 
@@ -1957,7 +2070,7 @@ export default function App() {
                   <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Admin Console</p>
                   <h2 className="mt-3 text-2xl font-semibold">{session.name}</h2>
                   <p className="mt-2 text-sm text-ink/65">
-                    這裡可以依 TAB 切換訂單管理、供應商管理、報表設定與系統設定，不重新整理整頁。
+                    這裡可以依 TAB 切換訂單管理、供應商管理、報表設定、CSV 匯入與系統設定，不重新整理整頁。
                   </p>
                 </div>
                 <button
@@ -2751,6 +2864,113 @@ export default function App() {
                   </div>
                 ) : null}
 
+                {activeTab === "admin-import" ? (
+                  <div className="grid gap-6">
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                      <div>
+                        <p className="text-sm uppercase tracking-[0.35em] text-pine/70">CSV Import</p>
+                        <h3 className="mt-3 text-xl font-semibold">CSV 批次匯入管理</h3>
+                        <p className="mt-2 text-sm text-ink/65">
+                          下載對應範本後填寫資料，再上傳 UTF-8 編碼 CSV。系統會依資料類型進行表頭、
+                          必填欄位、重複資料與批次 transaction 驗證。
+                        </p>
+                      </div>
+                      <div className="mt-6 grid gap-4">
+                        {CSV_IMPORT_CARDS.map((card) => {
+                          const resultRows = csvImportResults[card.type] ?? [];
+                          const errorData = csvImportErrors[card.type];
+                          return (
+                            <div key={card.type} className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
+                              <div className="flex flex-wrap items-start justify-between gap-4">
+                                <div>
+                                  <p className="text-sm uppercase tracking-[0.35em] text-clay/80">{card.type}</p>
+                                  <h4 className="mt-2 text-lg font-semibold">{card.title}</h4>
+                                  <p className="mt-2 text-sm text-ink/65">{card.description}</p>
+                                </div>
+                                <button
+                                  className="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
+                                  onClick={() => void handleDownloadCsvTemplate(card.type)}
+                                  type="button"
+                                  disabled={loading}
+                                >
+                                  下載範本
+                                </button>
+                              </div>
+                              <div className="mt-4 rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm text-ink/75">
+                                表頭：`{card.header}`
+                              </div>
+                              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <input
+                                  className="block w-full text-sm text-ink/70"
+                                  type="file"
+                                  accept=".csv,text/csv"
+                                  onChange={(event) =>
+                                    setCsvImportFiles((current) => ({
+                                      ...current,
+                                      [card.type]: event.target.files?.item(0) ?? null,
+                                    }))
+                                  }
+                                />
+                                <button
+                                  className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                  onClick={() => void submitCsvImport(card.type)}
+                                  type="button"
+                                  disabled={loading}
+                                >
+                                  上傳 CSV
+                                </button>
+                              </div>
+                              {errorData ? (
+                                <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-4 text-sm text-red-700">
+                                  <p>{errorData.message}</p>
+                                  {errorData.failedAtLine ? (
+                                    <p className="mt-2">失敗行號：第 {errorData.failedAtLine} 行</p>
+                                  ) : null}
+                                  {errorData.reason ? (
+                                    <p className="mt-2">原因：{errorData.reason}</p>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                              {resultRows.length ? (
+                                <div className="mt-4 rounded-2xl border border-ink/10 bg-white p-4">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <h5 className="text-sm font-semibold text-ink">最近一次成功匯入結果</h5>
+                                    <span className="text-xs text-ink/55">共 {resultRows.length} 筆</span>
+                                  </div>
+                                  <div className="mt-3 overflow-x-auto">
+                                    <table className="min-w-full text-left text-sm text-ink/75">
+                                      <thead>
+                                        <tr className="border-b border-ink/10 text-ink/55">
+                                          {card.columns.map((column) => (
+                                            <th key={column.key} className="px-3 py-2 font-medium">
+                                              {column.label}
+                                            </th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {resultRows.map((row, index) => (
+                                          <tr key={`${card.type}-${index}`} className="border-b border-ink/5">
+                                            {card.columns.map((column) => (
+                                              <td key={column.key} className="px-3 py-2 align-top">
+                                                {String(row[column.key] ?? "")}
+                                              </td>
+                                            ))}
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </article>
+                  </div>
+                ) : null}
+
                 {activeTab === "admin-settings" ? (
                   <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
                     <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
@@ -2887,38 +3107,6 @@ export default function App() {
                               ) : null}
                             </div>
                           ) : null}
-
-                          {adminSettingsTab === "employee-import" ? (
-                            <div className="space-y-4">
-                                <div>
-                                  <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Import</p>
-                                  <h4 className="mt-2 text-lg font-semibold">CSV 批次匯入</h4>
-                                </div>
-                                <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-4 text-sm text-ink/70">
-                                  CSV 欄位格式為 `username,name,email,department`，其中 `department`
-                                  需對應部門名稱。
-                                </div>
-                                <input
-                                  className="block w-full text-sm text-ink/70"
-                                  type="file"
-                                accept=".csv,text/csv"
-                                onChange={(event) => setSelectedFile(event.target.files?.item(0) ?? null)}
-                              />
-                              <button
-                                className="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
-                                onClick={() => void submitImportEmployees()}
-                                type="button"
-                                disabled={loading}
-                              >
-                                上傳 CSV
-                              </button>
-                              {importResult ? (
-                                <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-4 text-sm text-ink/80">
-                                  成功 {importResult.successCount} 筆，失敗 {importResult.failureCount} 筆
-                                </div>
-                              ) : null}
-                              </div>
-                            ) : null}
 
                           {adminSettingsTab === "department-management" ? (
                             <div className="space-y-5">
@@ -3226,15 +3414,6 @@ export default function App() {
                           );
                         })}
                       </div>
-                      {importResult?.errors.length ? (
-                        <div className="mt-6 rounded-[1.5rem] border border-red-100 bg-red-50 p-4 text-sm text-red-700">
-                          {importResult.errors.map((entry) => (
-                            <p key={`${entry.lineNumber}-${entry.rawData}`}>
-                              第 {entry.lineNumber} 行: {entry.reason}
-                            </p>
-                          ))}
-                        </div>
-                      ) : null}
                     </article>
                   </div>
                 ) : null}

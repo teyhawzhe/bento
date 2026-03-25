@@ -10,4 +10,5 @@ public interface SupplierRepository {
     List<Supplier> findAll();
     List<Supplier> findByNameExact(String name);
     List<Supplier> findByNameFuzzy(String keyword);
+    Optional<Supplier> findByBusinessRegistrationNo(String businessRegistrationNo);
 }

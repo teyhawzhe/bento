@@ -101,6 +101,20 @@ public class JdbcSupplierRepository implements SupplierRepository {
                 "%" + keyword + "%");
     }
 
+    @Override
+    public Optional<Supplier> findByBusinessRegistrationNo(String businessRegistrationNo) {
+        List<Supplier> suppliers = jdbcTemplate.query(
+                """
+                SELECT id, name, email, phone, contact_person, business_registration_no, is_active, created_at
+                FROM suppliers
+                WHERE LOWER(business_registration_no) = LOWER(?)
+                ORDER BY id
+                """,
+                this::mapRow,
+                businessRegistrationNo);
+        return suppliers.stream().findFirst();
+    }
+
     private Supplier update(Supplier supplier) {
         jdbcTemplate.update(
                 """

@@ -1,11 +1,12 @@
 import axios from "axios";
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios";
 import type {
+  CsvImportRow,
+  CsvImportType,
   Department,
   EmployeeMenuOption,
   EmployeeSummary,
   ErrorEmail,
-  ImportEmployeesResponse,
   LoginRequest,
   LoginResponse,
   Menu,
@@ -280,7 +281,27 @@ export function createEmployee(
 export function importEmployees(token: string, file: File) {
   const formData = new FormData();
   formData.append("file", file);
-  return unwrap<ImportEmployeesResponse>(api.post("/admin/employees/import", formData, {
+  return unwrap<void>(api.post("/admin/employees/import", formData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }));
+}
+
+export async function downloadImportTemplate(token: string, type: CsvImportType) {
+  const response = await api.get<string>(`/admin/import/template/${type}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    responseType: "text",
+  });
+  return response.data;
+}
+
+export function importAdminCsv(token: string, type: CsvImportType, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return unwrap<CsvImportRow[]>(api.post(`/admin/import/${type}`, formData, {
     headers: {
       Authorization: `Bearer ${token}`,
     },

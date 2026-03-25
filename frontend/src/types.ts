@@ -30,15 +30,16 @@ export interface EmployeeSummary {
   updatedAt: string;
 }
 
-export interface ImportEmployeesResponse {
+export type CsvImportType = "employees" | "departments" | "suppliers" | "menus";
+
+export type CsvImportRowValue = string | number | boolean | null;
+
+export type CsvImportRow = Record<string, CsvImportRowValue>;
+
+export interface CsvImportErrorData {
   message: string;
-  successCount: number;
-  failureCount: number;
-  errors: Array<{
-    lineNumber: number;
-    rawData: string;
-    reason: string;
-  }>;
+  failedAtLine?: number;
+  reason?: string;
 }
 
 export interface SessionUser {

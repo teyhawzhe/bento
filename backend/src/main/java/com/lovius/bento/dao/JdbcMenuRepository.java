@@ -106,6 +106,22 @@ public class JdbcMenuRepository implements MenuRepository {
                 orderDate);
     }
 
+    @Override
+    public Optional<Menu> findBySupplierIdAndName(Long supplierId, String name) {
+        List<Menu> menus = jdbcTemplate.query(
+                """
+                SELECT id, supplier_id, name, category, description, price, valid_from, valid_to,
+                       created_by, created_at, updated_at
+                FROM menus
+                WHERE supplier_id = ? AND LOWER(name) = LOWER(?)
+                ORDER BY id
+                """,
+                this::mapRow,
+                supplierId,
+                name);
+        return menus.stream().findFirst();
+    }
+
     private Menu insert(Menu menu) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {

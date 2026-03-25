@@ -1,6 +1,7 @@
 package com.lovius.bento.exception;
 
 import com.lovius.bento.dto.ApiFailedResponse;
+import com.lovius.bento.dto.ApiImportFailedResponse;
 import jakarta.validation.ConstraintViolationException;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -15,6 +16,21 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(CsvImportException.class)
+    public ResponseEntity<ApiImportFailedResponse> handleCsvImportException(CsvImportException exception) {
+        logger.warn(
+                "CSV import exception: status={}, line={}, reason={}, message={}",
+                exception.getStatus(),
+                exception.getFailedAtLine(),
+                exception.getReason(),
+                exception.getMessage());
+        return ResponseEntity.status(exception.getStatus())
+                .body(ApiImportFailedResponse.failed(
+                        exception.getMessage(),
+                        exception.getFailedAtLine(),
+                        exception.getReason()));
+    }
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiFailedResponse> handleApiException(ApiException exception) {

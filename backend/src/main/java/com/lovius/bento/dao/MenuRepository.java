@@ -10,4 +10,5 @@ public interface MenuRepository {
     Optional<Menu> findById(Long id);
     List<Menu> findAll(boolean includeHistory, LocalDate today, Long supplierId);
     List<Menu> findAvailableForDate(LocalDate orderDate);
+    Optional<Menu> findBySupplierIdAndName(Long supplierId, String name);
 }
