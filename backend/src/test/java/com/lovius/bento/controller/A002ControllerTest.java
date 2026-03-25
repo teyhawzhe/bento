@@ -68,7 +68,7 @@ class A002ControllerTest {
     void getMenusSupportsSupplierFilter() throws Exception {
         Mockito.when(tokenService.parseToken("Bearer admin-token"))
                 .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
-        Mockito.when(menuService.getMenus(true, 5L)).thenReturn(List.of(new com.lovius.bento.dto.MenuResponse(
+        Mockito.when(menuService.getMenus(5L)).thenReturn(List.of(new com.lovius.bento.dto.MenuResponse(
                 20L,
                 5L,
                 "招牌便當",
@@ -83,7 +83,6 @@ class A002ControllerTest {
 
         mockMvc.perform(MockMvcRequestBuilders.get("/api/menus")
                         .header("Authorization", "Bearer admin-token")
-                        .param("include_history", "true")
                         .param("supplier_id", "5"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].supplier_id").value(5))

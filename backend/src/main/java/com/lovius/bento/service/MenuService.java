@@ -46,8 +46,8 @@ public class MenuService {
                 .toList();
     }
 
-    public List<MenuResponse> getMenus(boolean includeHistory, Long supplierId) {
-        return menuRepository.findAll(includeHistory, LocalDate.now(), supplierId)
+    public List<MenuResponse> getMenus(Long supplierId) {
+        return menuRepository.findAll(false, LocalDate.now(), supplierId)
                 .stream()
                 .map(this::toAdminResponse)
                 .toList();

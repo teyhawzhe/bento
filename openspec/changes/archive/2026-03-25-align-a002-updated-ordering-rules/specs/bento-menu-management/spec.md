@@ -1,17 +1,4 @@
-## Purpose
-定義管理員建立、查詢與修改菜單時，需遵循的 OpenAPI 契約與 envelope 回應格式。
-
-## Requirements
-### Requirement: 菜單管理 API 必須符合 OpenAPI 契約
-系統 SHALL 讓 `/api/menus` 與 `/api/menus/{id}` 的查詢、建立與修改行為符合 `../uml/openapi.yaml` 定義的 request/response 契約，並以 `status/data` 格式回傳。
-
-#### Scenario: 菜單清單查詢符合 envelope
-- **WHEN** 管理員成功呼叫 `GET /api/menus`
-- **THEN** 系統以 `status=success` 與 `data` 陣列回傳菜單清單
-
-#### Scenario: 建立菜單符合 envelope
-- **WHEN** 管理員成功呼叫 `POST /api/menus`
-- **THEN** 系統以 `201` 與 `status=success` 回傳新建菜單資料
+## ADDED Requirements
 
 ### Requirement: 管理員菜單清單查詢需對齊最新版 A002 範圍
 系統 SHALL 提供管理員查詢菜單清單的能力，以支援建立後檢視與後續編輯流程。最新版 A002 僅要求 `GET /api/menus` 回傳菜單清單本身，不再把「含歷史菜單」或 `include_history` 查詢模式視為 A002 的必要需求。

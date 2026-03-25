@@ -371,7 +371,6 @@ export default function App() {
   const [monthlyBillingLogs, setMonthlyBillingLogs] = useState<MonthlyBillingLog[]>([]);
   const [importResult, setImportResult] = useState<ImportEmployeesResponse | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [includeHistory, setIncludeHistory] = useState(false);
   const [deadlineMessage, setDeadlineMessage] = useState("");
 
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
@@ -486,8 +485,8 @@ export default function App() {
       return;
     }
 
-    void loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
-  }, [adminOrderFilters, includeHistory, session, supplierFilters]);
+    void loadAdminData(session.token, adminOrderFilters, supplierFilters);
+  }, [adminOrderFilters, session, supplierFilters]);
 
   useEffect(() => {
     if (session?.role !== "admin") {
@@ -495,8 +494,8 @@ export default function App() {
       return;
     }
 
-    void loadSupplierMenus(session.token, includeHistory, selectedMenuSupplierId);
-  }, [includeHistory, selectedMenuSupplierId, session]);
+    void loadSupplierMenus(session.token, selectedMenuSupplierId);
+  }, [selectedMenuSupplierId, session]);
 
   useEffect(() => {
     if (!selectedMenuSupplierId) {
@@ -749,7 +748,7 @@ export default function App() {
       setDeadlineMessage(
         nextOrderableDates.length
           ? ""
-          : "目前沒有可訂日期。員工可訂本次截止日後到下週五區間內、且仍在菜單有效期間內的便當。",
+          : "目前沒有可訂日期。員工可訂本次截止日後一天起到下一個星期五、且仍在菜單有效期間內的便當。",
       );
       setOrderForm((current) => {
         const nextOrderDate = nextOrderableDates.includes(current.orderDate)
@@ -783,7 +782,6 @@ export default function App() {
 
   async function loadAdminData(
     token: string,
-    history: boolean,
     filters: { dateFrom: string; dateTo: string; employeeId: string },
     supplierQuery: { name: string; searchType: "exact" | "fuzzy" },
   ) {
@@ -792,7 +790,6 @@ export default function App() {
         employeesResponse,
         departmentsResponse,
         menusResponse,
-        allMenusResponse,
         errorEmailsResponse,
         reportEmailsResponse,
         monthlyBillingLogsResponse,
@@ -802,8 +799,7 @@ export default function App() {
       ] = await Promise.all([
         getEmployees(token),
         getDepartments(token),
-        getMenus(token, history),
-        getMenus(token, true),
+        getMenus(token),
         getErrorEmails(token),
         getReportEmails(token),
         getMonthlyBillingLogs(token),
@@ -830,7 +826,7 @@ export default function App() {
         buildAdminOrders(
           adminOrdersResponse.data,
           employeesResponse.data,
-          allMenusResponse.data,
+          menusResponse.data,
           supplierOptionsResponse.data,
         ),
       );
@@ -847,14 +843,14 @@ export default function App() {
     openErrorBox(fallbackMessage);
   }
 
-  async function loadSupplierMenus(token: string, history: boolean, supplierId: string) {
+  async function loadSupplierMenus(token: string, supplierId: string) {
     if (!supplierId) {
       setSupplierMenus([]);
       return;
     }
 
     try {
-      const response = await getMenus(token, history, Number(supplierId));
+      const response = await getMenus(token, Number(supplierId));
       setSupplierMenus(response.data);
     } catch (unknownError) {
       setSupplierMenus([]);
@@ -875,7 +871,7 @@ export default function App() {
       if (nextSession.role === "employee") {
         await loadEmployeeData(nextSession.token);
       } else {
-        await loadAdminData(nextSession.token, includeHistory, adminOrderFilters, supplierFilters);
+        await loadAdminData(nextSession.token, adminOrderFilters, supplierFilters);
       }
       openSuccessBox(
         nextSession.role === "admin"
@@ -964,7 +960,7 @@ export default function App() {
         email: "",
         departmentId: current.departmentId,
       }));
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox("員工帳號已建立，初始密碼已寄送至員工信箱。", "員工已建立");
     } catch (unknownError) {
       handleHttpError(unknownError, "新增員工失敗");
@@ -982,7 +978,7 @@ export default function App() {
     try {
       const response = await importEmployees(session.token, selectedFile);
       setImportResult(response.data);
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox(response.data.message, "匯入完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "CSV 匯入失敗");
@@ -1019,7 +1015,7 @@ export default function App() {
         isAdmin: draft.isAdmin,
       });
       setEditingEmployeeId(null);
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox("員工資料已更新。", "員工資料已更新");
     } catch (unknownError) {
       handleHttpError(unknownError, "更新員工資料失敗");
@@ -1040,7 +1036,7 @@ export default function App() {
     try {
       const response = await createDepartment(session.token, { name: departmentForm.name });
       setDepartmentForm({ name: "" });
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox(`部門 ${response.data.name} 已建立。`, "部門建立成功");
     } catch (unknownError) {
       handleHttpError(unknownError, "建立部門失敗");
@@ -1063,7 +1059,7 @@ export default function App() {
     setLoading(true);
     try {
       await updateDepartment(session.token, departmentId, draft);
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox("部門資料已更新。", "部門更新成功");
     } catch (unknownError) {
       handleHttpError(unknownError, "更新部門失敗");
@@ -1079,7 +1075,7 @@ export default function App() {
     setLoading(true);
     try {
       await updateEmployeeStatus(session.token, employee.id, !employee.isActive);
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox(employee.isActive ? "員工已停用。" : "員工已啟用。", "狀態已更新");
     } catch (unknownError) {
       handleHttpError(unknownError, "更新狀態失敗");
@@ -1128,7 +1124,7 @@ export default function App() {
     try {
       await resetEmployeePassword(session.token, employeeId, nextPassword);
       setResetForms((current) => ({ ...current, [employeeId]: "" }));
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox("密碼已重設，系統已送出通知。", "重設完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "重設密碼失敗");
@@ -1204,7 +1200,7 @@ export default function App() {
     setLoading(true);
     try {
       await cancelAdminOrder(session.token, orderId);
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox("已取消指定員工訂餐。", "訂單已取消");
     } catch (unknownError) {
       handleHttpError(unknownError, "管理員取消訂餐失敗");
@@ -1252,7 +1248,7 @@ export default function App() {
         businessRegistrationNo: response.data.businessRegistrationNo,
         isActive: response.data.isActive,
       });
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox(`供應商已建立，ID: ${response.data.id}`, "建立完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "新增供應商失敗");
@@ -1318,7 +1314,7 @@ export default function App() {
         businessRegistrationNo: response.data.businessRegistrationNo,
         isActive: response.data.isActive,
       });
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox("供應商資料已更新。", "更新完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "更新供應商失敗");
@@ -1406,7 +1402,7 @@ export default function App() {
     setLoading(true);
     try {
       await triggerMonthlyBilling(session.token);
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox("月結報表已開始執行，請至下方發送記錄查看最新結果。", "月結報表已觸發");
     } catch (unknownError) {
       handleHttpError(unknownError, "手動觸發月結報表失敗");
@@ -1450,8 +1446,8 @@ export default function App() {
         validFrom: nextWeekdays()[0] ?? "",
         validTo: nextWeekdays()[4] ?? "",
       });
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
-      await loadSupplierMenus(session.token, includeHistory, selectedMenuSupplierId);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
+      await loadSupplierMenus(session.token, selectedMenuSupplierId);
       openSuccessBox("菜單建立成功。", "建立完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "建立菜單失敗");
@@ -1496,8 +1492,8 @@ export default function App() {
         delete next[menuId];
         return next;
       });
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
-      await loadSupplierMenus(session.token, includeHistory, selectedMenuSupplierId);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
+      await loadSupplierMenus(session.token, selectedMenuSupplierId);
       openSuccessBox("菜單已更新。", "更新完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "更新菜單失敗");
@@ -1526,7 +1522,7 @@ export default function App() {
         menuId: Number(adminOrderForm.menuId),
         orderDate: adminOrderForm.orderDate,
       });
-      await loadAdminData(session.token, includeHistory, adminOrderFilters, supplierFilters);
+      await loadAdminData(session.token, adminOrderFilters, supplierFilters);
       openSuccessBox("已為員工建立隔日訂餐。", "建立完成");
     } catch (unknownError) {
       handleHttpError(unknownError, "管理員代訂失敗");
@@ -1810,7 +1806,7 @@ export default function App() {
                             </label>
                           </div>
                           <div className="rounded-[1.5rem] bg-[#171717] p-5 text-sm leading-7 text-white/80">
-                            員工端不顯示價格資訊。可訂日期為本次星期五 12:00 截止後到下週五的區間，週末若有設定菜單也可訂；若同一天已經下單，送出後會以最新選擇覆蓋舊訂單。
+                            員工端不顯示價格資訊。可訂日期為本次星期五 12:00 截止後一天起到下一個星期五，週末若有設定菜單也可訂；若同一天已經下單，送出後會以最新選擇覆蓋舊訂單。
                           </div>
                           {!availableEmployeeMenus.length ? (
                             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -2477,14 +2473,6 @@ export default function App() {
                               <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Menu List</p>
                               <h3 className="mt-3 text-xl font-semibold">供應商菜單清單</h3>
                             </div>
-                            <label className="flex items-center gap-2 text-sm text-ink/70">
-                              <input
-                                checked={includeHistory}
-                                onChange={(event) => setIncludeHistory(event.target.checked)}
-                                type="checkbox"
-                              />
-                              顯示歷史菜單
-                            </label>
                           </div>
                           <div className="mt-6 grid gap-4">
                             {!selectedMenuSupplierId ? (

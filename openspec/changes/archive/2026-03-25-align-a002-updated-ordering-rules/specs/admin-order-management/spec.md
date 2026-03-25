@@ -1,17 +1,4 @@
-## Purpose
-定義管理員查詢、代訂與取消員工訂餐時，需對齊的 API 契約與預設查詢規則。
-
-## Requirements
-### Requirement: 管理員訂單 API 必須符合 OpenAPI 回應契約
-系統 SHALL 讓 `/api/admin/orders`、`/api/admin/orders/{id}` 與 `/api/admin/suppliers` 的成功與失敗回應符合 `status/data` 契約。管理員查單 API 預設查詢區間 MUST 為今天到今天。
-
-#### Scenario: 管理員查詢訂單回應符合 envelope
-- **WHEN** 管理員成功呼叫 `GET /api/admin/orders`
-- **THEN** 系統以 `status=success` 與 `data` 陣列回傳查詢結果
-
-#### Scenario: 管理員查詢供應商與便當選項符合 envelope
-- **WHEN** 管理員成功呼叫 `GET /api/admin/suppliers`
-- **THEN** 系統以 `status=success` 回傳供應商及其便當選項資料
+## ADDED Requirements
 
 ### Requirement: 管理員取消指定員工訂單必須遵守 16:30 截止規則
 系統 SHALL 對 `DELETE /api/admin/orders/{id}` 套用逐筆訂單的取消截止時間。管理員取消指定員工訂餐的截止時間 MUST 為該訂餐日前一日 16:30，也就是 A003 排程執行前 30 分鐘；超過截止時間後，系統 MUST 拒絕取消請求。

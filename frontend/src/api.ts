@@ -383,13 +383,12 @@ export function cancelAdminOrder(token: string, orderId: number) {
   }));
 }
 
-export function getMenus(token: string, includeHistory: boolean, supplierId?: number) {
+export function getMenus(token: string, supplierId?: number) {
   return unwrap<Menu[]>(api.get("/menus", {
     headers: {
       Authorization: `Bearer ${token}`,
     },
     params: {
-      include_history: includeHistory,
       supplier_id: supplierId,
     },
   }));
@@ -439,14 +438,6 @@ export function updateDepartment(
   payload: { name: string },
 ) {
   return unwrap<Department>(api.patch(`/admin/departments/${departmentId}`, payload, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  }));
-}
-
-export function deleteDepartment(token: string, departmentId: number) {
-  return unwrap<void>(api.delete(`/admin/departments/${departmentId}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },

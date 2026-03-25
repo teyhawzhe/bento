@@ -2,6 +2,7 @@ package com.lovius.bento.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.lovius.bento.service.AppMailSender;
 import com.lovius.bento.service.EmailService;
@@ -10,9 +11,13 @@ import com.lovius.bento.service.SmtpMailSender;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Import;
+import org.junit.jupiter.api.extension.ExtendWith;
 
+@ExtendWith(OutputCaptureExtension.class)
 class MailConfigurationTest {
     @Test
     void devProfileUsesMockModeByDefault() {
@@ -25,6 +30,22 @@ class MailConfigurationTest {
             assertInstanceOf(MockMailSender.class, mailSender);
             emailService.sendEmail("alice@company.local", "dev", "hello");
             assertEquals(1, emailService.getSentEmails().size());
+        }
+    }
+
+    @Test
+    void mockModeLogsRecipientSubjectAndBody(CapturedOutput output) {
+        try (ConfigurableApplicationContext context = runWithProfile("dev")) {
+            EmailService emailService = context.getBean(EmailService.class);
+
+            emailService.sendEmail("alice@company.local", "Daily Bento", "Order summary");
+
+            assertEquals(1, emailService.getSentEmails().size());
+            assertTrue(output.getOut().contains("MOCK_EMAIL"));
+            assertTrue(output.getOut().contains("recipient=alice@company.local"));
+            assertTrue(output.getOut().contains("subject=Daily Bento"));
+            assertTrue(output.getOut().contains("body="));
+            assertTrue(output.getOut().contains("Order summary"));
         }
     }
 

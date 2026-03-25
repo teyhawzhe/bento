@@ -37,11 +37,11 @@ class MenuServiceTest {
 
     @Test
     void getMenusDelegatesSupplierFilterToRepository() {
-        when(menuRepository.findAll(true, LocalDate.now(), 5L)).thenReturn(List.of(menu(20L, 5L, "招牌便當")));
+        when(menuRepository.findAll(false, LocalDate.now(), 5L)).thenReturn(List.of(menu(20L, 5L, "招牌便當")));
 
-        var response = menuService.getMenus(true, 5L);
+        var response = menuService.getMenus(5L);
 
-        verify(menuRepository).findAll(true, LocalDate.now(), 5L);
+        verify(menuRepository).findAll(false, LocalDate.now(), 5L);
         assertEquals(1, response.size());
         assertEquals(5L, response.getFirst().supplierId());
         assertEquals("招牌便當", response.getFirst().name());
