@@ -362,6 +362,7 @@ export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [employeeDepartmentFilter, setEmployeeDepartmentFilter] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierOptions, setSupplierOptions] = useState<Supplier[]>([]);
   const [supplierMenus, setSupplierMenus] = useState<Menu[]>([]);
@@ -442,6 +443,7 @@ export default function App() {
     setEmployeeOrderDates([]);
     setMenus([]);
     setDepartments([]);
+    setEmployeeDepartmentFilter("");
     setSuppliers([]);
     setSupplierOptions([]);
     setSupplierMenus([]);
@@ -485,8 +487,8 @@ export default function App() {
       return;
     }
 
-    void loadAdminData(session.token, adminOrderFilters, supplierFilters);
-  }, [adminOrderFilters, session, supplierFilters]);
+    void loadAdminData(session.token, adminOrderFilters, supplierFilters, employeeDepartmentFilter);
+  }, [adminOrderFilters, employeeDepartmentFilter, session, supplierFilters]);
 
   useEffect(() => {
     if (session?.role !== "admin") {
@@ -532,6 +534,26 @@ export default function App() {
       }));
     }
   }, [createForm.departmentId, departments, session]);
+
+  useEffect(() => {
+    if (session?.role !== "admin") {
+      if (employeeDepartmentFilter) {
+        setEmployeeDepartmentFilter("");
+      }
+      return;
+    }
+
+    if (!employeeDepartmentFilter) {
+      return;
+    }
+
+    const selectedStillValid = departments.some(
+      (department) => String(department.id) === employeeDepartmentFilter,
+    );
+    if (!selectedStillValid) {
+      setEmployeeDepartmentFilter("");
+    }
+  }, [departments, employeeDepartmentFilter, session]);
 
   useEffect(() => {
     setEditingDepartments((current) => {
@@ -784,6 +806,7 @@ export default function App() {
     token: string,
     filters: { dateFrom: string; dateTo: string; employeeId: string },
     supplierQuery: { name: string; searchType: "exact" | "fuzzy" },
+    employeeDepartmentId = "",
   ) {
     try {
       const [
@@ -797,7 +820,7 @@ export default function App() {
         suppliersResponse,
         supplierOptionsResponse,
       ] = await Promise.all([
-        getEmployees(token),
+        getEmployees(token, employeeDepartmentId ? Number(employeeDepartmentId) : undefined),
         getDepartments(token),
         getMenus(token),
         getErrorEmails(token),
@@ -2983,6 +3006,27 @@ export default function App() {
                         <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
                           {employees.length} 人
                         </span>
+                      </div>
+                      <div className="mt-6 grid gap-3 sm:grid-cols-[minmax(0,16rem)_1fr] sm:items-center">
+                        <label className="grid gap-2 text-sm text-ink/70">
+                          依部門篩選
+                          <select
+                            className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                            value={employeeDepartmentFilter}
+                            onChange={(event) => setEmployeeDepartmentFilter(event.target.value)}
+                          >
+                            <option value="">全部</option>
+                            {departments.map((department) => (
+                              <option key={department.id} value={department.id}>
+                                {department.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <p className="text-sm text-ink/55">
+                          選擇特定部門時，系統會重新查詢該部門的員工；切回「全部」時不帶
+                          `department_id`。
+                        </p>
                       </div>
                       <div className="mt-6 grid gap-4">
                         {employees.map((employee) => {

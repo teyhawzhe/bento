@@ -54,6 +54,15 @@ public class EmployeeService {
                 .toList();
     }
 
+    public List<EmployeeSummaryResponse> getEmployees(Long departmentId) {
+        List<Employee> employees = departmentId == null
+                ? employeeRepository.findAll()
+                : employeeRepository.findByDepartmentId(departmentId);
+        return employees.stream()
+                .map(this::toSummary)
+                .toList();
+    }
+
     public void createEmployee(CreateEmployeeRequest request) {
         validateUnique(request.username(), request.email());
         Department department = departmentService.getActiveDepartment(request.departmentId());

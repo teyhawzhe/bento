@@ -9,6 +9,14 @@
 - **WHEN** 管理員成功呼叫 `GET /api/admin/employees`
 - **THEN** 系統以 `status=success` 與 `data` 陣列回傳員工清單
 
+#### Scenario: 依部門篩選員工清單
+- **WHEN** 管理員呼叫 `GET /api/admin/employees?department_id=2`
+- **THEN** 系統只回傳 `department.id = 2` 的員工資料
+
+#### Scenario: 查詢全部員工不帶 department_id
+- **WHEN** 管理員在員工清單頁選擇「全部」並呼叫 `GET /api/admin/employees`
+- **THEN** 系統回傳全部員工，而不是要求特定哨兵值代表全部
+
 #### Scenario: 重設員工密碼後 refresh token 被作廢
 - **WHEN** 管理員成功呼叫 `PATCH /api/admin/employees/{id}/reset-password`
 - **THEN** 系統更新目標員工密碼並作廢該員工所有未失效 refresh token

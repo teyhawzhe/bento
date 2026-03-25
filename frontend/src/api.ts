@@ -255,10 +255,13 @@ export function changePassword(token: string, oldPassword: string, newPassword: 
   ));
 }
 
-export function getEmployees(token: string) {
+export function getEmployees(token: string, departmentId?: number) {
   return unwrap<EmployeeSummary[]>(api.get("/admin/employees", {
     headers: {
       Authorization: `Bearer ${token}`,
+    },
+    params: {
+      department_id: departmentId,
     },
   }));
 }

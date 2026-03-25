@@ -7,6 +7,8 @@ import java.util.Optional;
 public interface EmployeeRepository {
     List<Employee> findAll();
 
+    List<Employee> findByDepartmentId(Long departmentId);
+
     Optional<Employee> findById(Long id);
 
     Optional<Employee> findByUsername(String username);

@@ -97,9 +97,10 @@ public class A001Controller {
 
     @GetMapping("/admin/employees")
     public ApiSuccessResponse<List<EmployeeSummaryResponse>> getEmployees(
-            @RequestHeader("Authorization") String authorizationHeader) {
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestParam(value = "department_id", required = false) Long departmentId) {
         requireRole(authorizationHeader, "admin");
-        return ApiSuccessResponse.success(employeeService.getAllEmployees());
+        return ApiSuccessResponse.success(employeeService.getEmployees(departmentId));
     }
 
     @PostMapping("/admin/employees")

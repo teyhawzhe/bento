@@ -33,6 +33,21 @@ public class JdbcEmployeeRepository implements EmployeeRepository {
     }
 
     @Override
+    public List<Employee> findByDepartmentId(Long departmentId) {
+        return jdbcTemplate.query(
+                """
+                SELECT e.id, e.department_id, d.name AS department_name, e.username, e.password_hash, e.name, e.email,
+                       e.is_admin, e.is_active, e.created_at, e.updated_at
+                FROM employees e
+                JOIN departments d ON d.id = e.department_id
+                WHERE e.department_id = ?
+                ORDER BY e.id
+                """,
+                this::mapRow,
+                departmentId);
+    }
+
+    @Override
     public Optional<Employee> findById(Long id) {
         return findOne(
                 """

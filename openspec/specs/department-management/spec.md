@@ -9,6 +9,10 @@
 - **WHEN** 管理員呼叫部門清單 API
 - **THEN** 系統以 `status=success` 回傳部門清單，且每筆資料包含 `id`、`name` 與 `created_at`
 
+#### Scenario: 部門清單可作為員工篩選下拉來源
+- **WHEN** 管理員進入員工清單頁並需要依部門篩選員工
+- **THEN** 系統可透過 `GET /api/admin/departments` 提供完整部門清單，供前端渲染「全部 + 部門列表」下拉選單
+
 ### Requirement: 管理員可修改部門資料
 系統 SHALL 允許已驗證的管理員透過 `PATCH /api/admin/departments/{id}` 修改部門名稱。修改請求 MUST 僅要求 `name`，且 MUST 驗證名稱唯一性。系統 MUST 不提供 UML 與 OpenAPI 未定義的部門刪除或停用 API 作為對外契約。
 

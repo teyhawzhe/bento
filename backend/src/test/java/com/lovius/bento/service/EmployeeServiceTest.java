@@ -9,6 +9,7 @@ import com.lovius.bento.model.Department;
 import com.lovius.bento.model.Employee;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -114,6 +115,34 @@ class EmployeeServiceTest {
                         new CreateEmployeeRequest("alice", "Alice", "alice@company.local", 1L)));
 
         Assertions.assertEquals("username 已存在", exception.getMessage());
+    }
+
+    @Test
+    void getEmployeesWithoutDepartmentFilterReturnsAllEmployees() {
+        Instant now = Instant.parse("2026-03-25T09:00:00Z");
+        Mockito.when(employeeRepository.findAll()).thenReturn(List.of(
+                new Employee(5L, 2L, "Operations", "alice", "hash", "Alice", "alice@company.local", false, true, now, now),
+                new Employee(6L, 3L, "Finance", "bob", "hash", "Bob", "bob@company.local", false, true, now, now)));
+
+        var response = employeeService.getEmployees(null);
+
+        Assertions.assertEquals(2, response.size());
+        Assertions.assertEquals("Operations", response.getFirst().department().name());
+        Mockito.verify(employeeRepository).findAll();
+    }
+
+    @Test
+    void getEmployeesWithDepartmentFilterReturnsMatchingEmployeesOnly() {
+        Instant now = Instant.parse("2026-03-25T09:00:00Z");
+        Mockito.when(employeeRepository.findByDepartmentId(2L)).thenReturn(List.of(
+                new Employee(5L, 2L, "Operations", "alice", "hash", "Alice", "alice@company.local", false, true, now, now)));
+
+        var response = employeeService.getEmployees(2L);
+
+        Assertions.assertEquals(1, response.size());
+        Assertions.assertEquals(2L, response.getFirst().department().id());
+        Assertions.assertEquals("Operations", response.getFirst().department().name());
+        Mockito.verify(employeeRepository).findByDepartmentId(2L);
     }
 
     @Test

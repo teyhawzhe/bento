@@ -39,10 +39,24 @@ class A001ControllerTest {
     void getEmployeesReturnsDepartmentFields() throws Exception {
         Mockito.when(tokenService.parseToken("Bearer admin-token"))
                 .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
-        Mockito.when(employeeService.getAllEmployees()).thenReturn(List.of(employeeSummary()));
+        Mockito.when(employeeService.getEmployees(null)).thenReturn(List.of(employeeSummary()));
 
         mockMvc.perform(MockMvcRequestBuilders.get("/api/admin/employees")
                         .header("Authorization", "Bearer admin-token"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].department.id").value(2))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].department.name").value("Operations"));
+    }
+
+    @Test
+    void getEmployeesAcceptsDepartmentFilter() throws Exception {
+        Mockito.when(tokenService.parseToken("Bearer admin-token"))
+                .thenReturn(new AuthenticatedUser(1L, "admin", "admin"));
+        Mockito.when(employeeService.getEmployees(2L)).thenReturn(List.of(employeeSummary()));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/admin/employees")
+                        .header("Authorization", "Bearer admin-token")
+                        .queryParam("department_id", "2"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].department.id").value(2))
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].department.name").value("Operations"));
