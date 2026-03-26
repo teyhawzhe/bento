@@ -24,6 +24,10 @@
 ### Requirement: 員工建立與密碼通知必須透過統一 mail delivery configuration 發送
 系統 SHALL 讓單一建立員工、CSV 匯入員工與管理員重設員工密碼通知透過統一 mail delivery configuration 發送。相同業務流程在 `mock` 與 `smtp` mode 間 MUST 維持一致的呼叫入口與業務結果語意。
 
+#### Scenario: 管理員透過員工管理主 TAB 進入建立與維護流程
+- **WHEN** 管理員在前端切換到「員工管理」主 TAB
+- **THEN** 系統顯示新增員工表單、員工清單、部門篩選、編輯入口、啟停操作與重設密碼操作
+
 #### Scenario: 建立員工時使用 mock mode
 - **WHEN** 管理員建立員工且系統設定 `mail mode = mock`
 - **THEN** 系統建立員工帳號並以 mock 發信方式記錄通知

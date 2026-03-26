@@ -69,16 +69,13 @@ const ADMIN_TABS = [
   { id: "admin-orders", label: "訂單管理" },
   { id: "admin-suppliers", label: "供應商管理" },
   { id: "admin-reports", label: "報表設定" },
+  { id: "admin-employees", label: "員工管理" },
   { id: "admin-import", label: "CSV 匯入" },
   { id: "admin-settings", label: "系統設定" },
 ] as const;
 const ADMIN_SUPPLIER_TABS = [
   { id: "supplier-directory", label: "供應商管理" },
   { id: "supplier-menus", label: "建立菜單" },
-] as const;
-const ADMIN_SETTINGS_TABS = [
-  { id: "employee-create", label: "新增員工帳號" },
-  { id: "department-management", label: "部門管理" },
 ] as const;
 const CSV_IMPORT_CARDS: Array<{
   type: CsvImportType;
@@ -148,7 +145,6 @@ const CSV_IMPORT_CARDS: Array<{
 type EmployeeTabId = (typeof EMPLOYEE_TABS)[number]["id"];
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
 type AdminSupplierTabId = (typeof ADMIN_SUPPLIER_TABS)[number]["id"];
-type AdminSettingsTabId = (typeof ADMIN_SETTINGS_TABS)[number]["id"];
 type AppTabId = EmployeeTabId | AdminTabId;
 type MessageBoxVariant = "success" | "error" | "warning" | "confirm";
 
@@ -412,7 +408,6 @@ export default function App() {
   const [session, setSession] = useState<SessionUser | null>(readSession);
   const [activeTab, setActiveTab] = useState<AppTabId>(() => defaultTabForRole("employee"));
   const [adminSupplierTab, setAdminSupplierTab] = useState<AdminSupplierTabId>("supplier-directory");
-  const [adminSettingsTab, setAdminSettingsTab] = useState<AdminSettingsTabId>("employee-create");
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [messageBox, setMessageBox] = useState<MessageBoxState>({
     isOpen: false,
@@ -721,7 +716,6 @@ export default function App() {
   useEffect(() => {
     setActiveTab(defaultTabForRole(session?.role ?? "employee"));
     setAdminSupplierTab("supplier-directory");
-    setAdminSettingsTab("employee-create");
   }, [session]);
 
   useEffect(() => {
@@ -2971,214 +2965,72 @@ export default function App() {
                   </div>
                 ) : null}
 
-                {activeTab === "admin-settings" ? (
+                {activeTab === "admin-employees" ? (
                   <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
                     <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
                       <div className="space-y-8">
-                        <section className="space-y-4">
+                        <section className="space-y-4 rounded-[1.5rem] border border-ink/10 bg-white p-5">
                           <div>
-                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Settings</p>
-                            <h3 className="mt-3 text-xl font-semibold">錯誤通知信箱</h3>
+                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Create</p>
+                            <h3 className="mt-3 text-xl font-semibold">新增員工帳號</h3>
                             <p className="mt-2 text-sm leading-7 text-ink/65">
-                              A003 供應商通知排程失敗時，會直接讀取這份收件清單。
+                              建立新員工帳號並指定部門，成功後系統會寄送初始密碼通知。
                             </p>
                           </div>
-                          <div className="flex gap-3">
-                            <input
-                              className="flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                              placeholder="ops-alerts@company.local"
-                              value={errorEmailForm.email}
-                              onChange={(event) => setErrorEmailForm({ email: event.target.value })}
-                            />
-                            <button
-                              className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                              onClick={() => void submitCreateErrorEmail()}
-                              type="button"
-                              disabled={loading}
-                            >
-                              新增
-                            </button>
-                          </div>
                           <div className="grid gap-3">
-                            {errorEmails.length ? (
-                              errorEmails.map((entry) => (
-                                <div
-                                  key={entry.id}
-                                  className="flex items-center justify-between gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-4"
-                                >
-                                  <div>
-                                    <p className="font-medium text-ink">{entry.email}</p>
-                                    <p className="mt-1 text-xs text-ink/45">
-                                      建立者 #{entry.createdBy} / {formatDateTime(entry.createdAt)}
-                                    </p>
-                                  </div>
-                                  <button
-                                    className="rounded-full border border-ink/10 px-4 py-2 text-sm"
-                                    onClick={() => confirmDeleteErrorEmail(entry.id)}
-                                    type="button"
-                                    disabled={loading}
-                                  >
-                                    刪除
-                                  </button>
-                                </div>
-                              ))
-                            ) : (
-                              <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
-                                目前尚未設定錯誤通知信箱
-                              </div>
-                            )}
-                          </div>
-                        </section>
-
-                        <section className="space-y-6 rounded-[1.5rem] border border-ink/10 bg-white p-5">
-                          <div className="flex flex-wrap items-center justify-between gap-4">
-                            <div>
-                              <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Employees</p>
-                              <h4 className="mt-2 text-lg font-semibold">員工帳號工具</h4>
-                            </div>
-                            <TabBar
-                              tabs={[...ADMIN_SETTINGS_TABS]}
-                              activeTab={adminSettingsTab}
-                              onChange={setAdminSettingsTab}
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="username"
+                              value={createForm.username}
+                              onChange={(event) =>
+                                setCreateForm((current) => ({ ...current, username: event.target.value }))
+                              }
                             />
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="姓名"
+                              value={createForm.name}
+                              onChange={(event) =>
+                                setCreateForm((current) => ({ ...current, name: event.target.value }))
+                              }
+                            />
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
+                              placeholder="Email"
+                              value={createForm.email}
+                              onChange={(event) =>
+                                setCreateForm((current) => ({ ...current, email: event.target.value }))
+                              }
+                            />
+                            <select
+                              className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
+                              value={createForm.departmentId}
+                              onChange={(event) =>
+                                setCreateForm((current) => ({
+                                  ...current,
+                                  departmentId: event.target.value,
+                                }))
+                              }
+                            >
+                              <option value="">選擇部門</option>
+                              {departments.map((department) => (
+                                <option key={department.id} value={department.id}>
+                                  {department.name}
+                                </option>
+                              ))}
+                            </select>
                           </div>
-
-                          {adminSettingsTab === "employee-create" ? (
-                            <div className="space-y-4">
-                              <div>
-                                <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Create</p>
-                                <h4 className="mt-2 text-lg font-semibold">新增員工帳號</h4>
-                              </div>
-                              <div className="grid gap-3">
-                                <input
-                                  className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
-                                  placeholder="username"
-                                  value={createForm.username}
-                                  onChange={(event) =>
-                                    setCreateForm((current) => ({ ...current, username: event.target.value }))
-                                  }
-                                />
-                                <input
-                                  className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
-                                  placeholder="姓名"
-                                  value={createForm.name}
-                                  onChange={(event) =>
-                                    setCreateForm((current) => ({ ...current, name: event.target.value }))
-                                  }
-                                />
-                                <input
-                                  className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
-                                  placeholder="Email"
-                                  value={createForm.email}
-                                  onChange={(event) =>
-                                    setCreateForm((current) => ({ ...current, email: event.target.value }))
-                                  }
-                                />
-                                <select
-                                  className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
-                                  value={createForm.departmentId}
-                                  onChange={(event) =>
-                                    setCreateForm((current) => ({
-                                      ...current,
-                                      departmentId: event.target.value,
-                                    }))
-                                  }
-                                >
-                                  <option value="">選擇部門</option>
-                                  {departments.map((department) => (
-                                      <option key={department.id} value={department.id}>
-                                        {department.name}
-                                      </option>
-                                    ))}
-                                </select>
-                              </div>
-                              <button
-                                className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                                onClick={() => void submitCreateEmployee()}
-                                type="button"
-                                disabled={loading}
-                              >
-                                建立員工
-                              </button>
-                              {!departments.length ? (
-                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                                  目前沒有可用部門，請先建立部門。
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-
-                          {adminSettingsTab === "department-management" ? (
-                            <div className="space-y-5">
-                              <div>
-                                <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Departments</p>
-                                <h4 className="mt-2 text-lg font-semibold">部門管理</h4>
-                              </div>
-                              <div className="flex flex-col gap-3 sm:flex-row">
-                                <input
-                                  className="min-w-0 flex-1 rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
-                                  placeholder="新增部門名稱"
-                                  value={departmentForm.name}
-                                  onChange={(event) => setDepartmentForm({ name: event.target.value })}
-                                />
-                                <button
-                                  className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                                  onClick={() => void submitCreateDepartment()}
-                                  type="button"
-                                  disabled={loading}
-                                >
-                                  建立部門
-                                </button>
-                              </div>
-                              <div className="grid gap-3">
-                                {departments.length ? (
-                                  departments.map((department) => {
-                                    const draft = editingDepartments[department.id] ?? {
-                                      name: department.name,
-                                    };
-                                    return (
-                                      <div
-                                        key={department.id}
-                                        className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-4"
-                                      >
-                                        <div className="flex flex-wrap items-center gap-3">
-                                          <input
-                                            className="min-w-0 flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                                            value={draft.name}
-                                            onChange={(event) =>
-                                              setEditingDepartments((current) => ({
-                                                ...current,
-                                                [department.id]: {
-                                                  name: event.target.value,
-                                                },
-                                              }))
-                                            }
-                                          />
-                                        </div>
-                                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                                          <p className="text-xs text-ink/45">
-                                            #{department.id}
-                                          </p>
-                                          <div className="flex flex-wrap gap-2">
-                                            <button
-                                              className="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm"
-                                              onClick={() => void submitUpdateDepartment(department.id)}
-                                              type="button"
-                                              disabled={loading}
-                                            >
-                                              儲存
-                                            </button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-4 text-sm text-ink/65">
-                                    目前沒有部門資料。
-                                  </div>
-                                )}
-                              </div>
+                          <button
+                            className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void submitCreateEmployee()}
+                            type="button"
+                            disabled={loading}
+                          >
+                            建立員工
+                          </button>
+                          {!departments.length ? (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                              目前沒有可用部門，請先建立部門。
                             </div>
                           ) : null}
                         </section>
@@ -3414,6 +3266,142 @@ export default function App() {
                           );
                         })}
                       </div>
+                    </article>
+                  </div>
+                ) : null}
+
+                {activeTab === "admin-settings" ? (
+                  <div className="grid gap-6 xl:grid-cols-2">
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
+                      <section className="space-y-4">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Settings</p>
+                          <h3 className="mt-3 text-xl font-semibold">錯誤通知信箱</h3>
+                          <p className="mt-2 text-sm leading-7 text-ink/65">
+                            A003 供應商通知排程失敗時，會直接讀取這份收件清單。
+                          </p>
+                        </div>
+                        <div className="flex gap-3">
+                          <input
+                            className="flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                            placeholder="ops-alerts@company.local"
+                            value={errorEmailForm.email}
+                            onChange={(event) => setErrorEmailForm({ email: event.target.value })}
+                          />
+                          <button
+                            className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void submitCreateErrorEmail()}
+                            type="button"
+                            disabled={loading}
+                          >
+                            新增
+                          </button>
+                        </div>
+                        <div className="grid gap-3">
+                          {errorEmails.length ? (
+                            errorEmails.map((entry) => (
+                              <div
+                                key={entry.id}
+                                className="flex items-center justify-between gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-4"
+                              >
+                                <div>
+                                  <p className="font-medium text-ink">{entry.email}</p>
+                                  <p className="mt-1 text-xs text-ink/45">
+                                    建立者 #{entry.createdBy} / {formatDateTime(entry.createdAt)}
+                                  </p>
+                                </div>
+                                <button
+                                  className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                                  onClick={() => confirmDeleteErrorEmail(entry.id)}
+                                  type="button"
+                                  disabled={loading}
+                                >
+                                  刪除
+                                </button>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
+                              目前尚未設定錯誤通知信箱
+                            </div>
+                          )}
+                        </div>
+                      </section>
+                    </article>
+
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                      <section className="space-y-5">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Departments</p>
+                          <h3 className="mt-3 text-xl font-semibold">部門管理</h3>
+                          <p className="mt-2 text-sm leading-7 text-ink/65">
+                            維護可供員工建立、查詢與篩選流程使用的部門主檔。
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                          <input
+                            className="min-w-0 flex-1 rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-clay"
+                            placeholder="新增部門名稱"
+                            value={departmentForm.name}
+                            onChange={(event) => setDepartmentForm({ name: event.target.value })}
+                          />
+                          <button
+                            className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void submitCreateDepartment()}
+                            type="button"
+                            disabled={loading}
+                          >
+                            建立部門
+                          </button>
+                        </div>
+                        <div className="grid gap-3">
+                          {departments.length ? (
+                            departments.map((department) => {
+                              const draft = editingDepartments[department.id] ?? {
+                                name: department.name,
+                              };
+                              return (
+                                <div
+                                  key={department.id}
+                                  className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-4"
+                                >
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <input
+                                      className="min-w-0 flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                                      value={draft.name}
+                                      onChange={(event) =>
+                                        setEditingDepartments((current) => ({
+                                          ...current,
+                                          [department.id]: {
+                                            name: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                                    <p className="text-xs text-ink/45">#{department.id}</p>
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        className="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm"
+                                        onClick={() => void submitUpdateDepartment(department.id)}
+                                        type="button"
+                                        disabled={loading}
+                                      >
+                                        儲存
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-4 text-sm text-ink/65">
+                              目前沒有部門資料。
+                            </div>
+                          )}
+                        </div>
+                      </section>
                     </article>
                   </div>
                 ) : null}
