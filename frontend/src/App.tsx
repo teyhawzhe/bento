@@ -70,6 +70,7 @@ const ADMIN_TABS = [
   { id: "admin-suppliers", label: "供應商管理" },
   { id: "admin-reports", label: "報表設定" },
   { id: "admin-employees", label: "員工管理" },
+  { id: "admin-departments", label: "部門管理" },
   { id: "admin-import", label: "CSV 匯入" },
   { id: "admin-settings", label: "系統設定" },
 ] as const;
@@ -3271,7 +3272,7 @@ export default function App() {
                 ) : null}
 
                 {activeTab === "admin-settings" ? (
-                  <div className="grid gap-6 xl:grid-cols-2">
+                  <div className="grid gap-6">
                     <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
                       <section className="space-y-4">
                         <div>
@@ -3328,7 +3329,11 @@ export default function App() {
                         </div>
                       </section>
                     </article>
+                  </div>
+                ) : null}
 
+                {activeTab === "admin-departments" ? (
+                  <div className="grid gap-6">
                     <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
                       <section className="space-y-5">
                         <div>
