@@ -6,6 +6,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.List;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,9 @@ public class PasswordPolicyService {
             Pattern.compile("^(?=.*[a-z])(?=.*[A-Z])[A-Za-z\\d]{8,16}$");
     private static final String PASSWORD_CHARS =
             "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    private static final String UPPERCASE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    private static final String LOWERCASE_CHARS = "abcdefghijkmnpqrstuvwxyz";
+    private static final String DIGIT_CHARS = "23456789";
     private final SecureRandom secureRandom = new SecureRandom();
 
     public void validatePassword(String rawPassword) {
@@ -25,14 +29,34 @@ public class PasswordPolicyService {
     }
 
     public String generateTemporaryPassword() {
-        StringBuilder builder = new StringBuilder();
-        while (builder.length() < 10) {
-            int index = secureRandom.nextInt(PASSWORD_CHARS.length());
-            builder.append(PASSWORD_CHARS.charAt(index));
+        List<Character> chars = new java.util.ArrayList<>();
+        chars.add(randomChar(UPPERCASE_CHARS));
+        chars.add(randomChar(LOWERCASE_CHARS));
+        chars.add(randomChar(DIGIT_CHARS));
+        while (chars.size() < 10) {
+            chars.add(randomChar(PASSWORD_CHARS));
         }
-        String candidate = builder.substring(0, 8) + "A1";
+        shuffle(chars);
+        StringBuilder builder = new StringBuilder();
+        for (char value : chars) {
+            builder.append(value);
+        }
+        String candidate = builder.toString();
         validatePassword(candidate);
         return candidate;
+    }
+
+    private char randomChar(String source) {
+        return source.charAt(secureRandom.nextInt(source.length()));
+    }
+
+    private void shuffle(List<Character> chars) {
+        for (int index = chars.size() - 1; index > 0; index--) {
+            int swapIndex = secureRandom.nextInt(index + 1);
+            Character current = chars.get(index);
+            chars.set(index, chars.get(swapIndex));
+            chars.set(swapIndex, current);
+        }
     }
 
     public String hash(String rawPassword) {
