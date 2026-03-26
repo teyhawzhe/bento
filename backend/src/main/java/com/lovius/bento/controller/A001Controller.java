@@ -95,6 +95,15 @@ public class A001Controller {
         return ApiSuccessResponse.empty();
     }
 
+    @PatchMapping("/admin/auth/change-password")
+    public ApiSuccessResponse<Void> changeAdminPassword(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        AuthenticatedUser authenticatedUser = requireRole(authorizationHeader, "admin");
+        authService.changePassword(authenticatedUser, request);
+        return ApiSuccessResponse.empty();
+    }
+
     @GetMapping("/admin/employees")
     public ApiSuccessResponse<List<EmployeeSummaryResponse>> getEmployees(
             @RequestHeader("Authorization") String authorizationHeader,

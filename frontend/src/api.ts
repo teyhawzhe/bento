@@ -256,6 +256,18 @@ export function changePassword(token: string, oldPassword: string, newPassword: 
   ));
 }
 
+export function changeAdminPassword(token: string, oldPassword: string, newPassword: string) {
+  return unwrap<void>(api.patch(
+    "/admin/auth/change-password",
+    { oldPassword, newPassword },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  ));
+}
+
 export function getEmployees(token: string, departmentId?: number) {
   return unwrap<EmployeeSummary[]>(api.get("/admin/employees", {
     headers: {

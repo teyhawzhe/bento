@@ -4,6 +4,7 @@ import { buildAdminOrders, employeeMenusForDate, employeeOrderableDatesFor } fro
 import {
   cancelAdminOrder,
   cancelOrder,
+  changeAdminPassword,
   changePassword,
   configureAuth,
   createDepartment,
@@ -64,6 +65,7 @@ const CATEGORY_OPTIONS = ["肉類", "海鮮", "素食"];
 const EMPLOYEE_TABS = [
   { id: "employee-ordering", label: "訂便當" },
   { id: "employee-orders", label: "我的訂單" },
+  { id: "employee-change-password", label: "修改密碼" },
 ] as const;
 const ADMIN_TABS = [
   { id: "admin-orders", label: "訂單管理" },
@@ -440,7 +442,8 @@ export default function App() {
 
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [forgotEmail, setForgotEmail] = useState("");
-  const [changeForm, setChangeForm] = useState({ oldPassword: "", newPassword: "" });
+  const [employeeChangeForm, setEmployeeChangeForm] = useState({ oldPassword: "", newPassword: "" });
+  const [adminChangeForm, setAdminChangeForm] = useState({ oldPassword: "", newPassword: "" });
   const [createForm, setCreateForm] = useState({
     username: "",
     name: "",
@@ -989,14 +992,14 @@ export default function App() {
     }
   }
 
-  async function submitChangePassword() {
+  async function submitEmployeeChangePassword() {
     if (!session) {
       return;
     }
     if (
       !validateWarning("請完整輸入舊密碼與新密碼。", [
-        !isBlank(changeForm.oldPassword),
-        !isBlank(changeForm.newPassword),
+        !isBlank(employeeChangeForm.oldPassword),
+        !isBlank(employeeChangeForm.newPassword),
       ])
     ) {
       return;
@@ -1005,10 +1008,40 @@ export default function App() {
     try {
       await changePassword(
         session.token,
-        changeForm.oldPassword,
-        changeForm.newPassword,
+        employeeChangeForm.oldPassword,
+        employeeChangeForm.newPassword,
       );
-      setChangeForm({ oldPassword: "", newPassword: "" });
+      setEmployeeChangeForm({ oldPassword: "", newPassword: "" });
+      applySession(null);
+      resetAppState();
+      openSuccessBox("密碼修改成功，請使用新密碼重新登入。", "密碼已更新");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "修改密碼失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitAdminChangePassword() {
+    if (!session) {
+      return;
+    }
+    if (
+      !validateWarning("請完整輸入舊密碼與新密碼。", [
+        !isBlank(adminChangeForm.oldPassword),
+        !isBlank(adminChangeForm.newPassword),
+      ])
+    ) {
+      return;
+    }
+    setLoading(true);
+    try {
+      await changeAdminPassword(
+        session.token,
+        adminChangeForm.oldPassword,
+        adminChangeForm.newPassword,
+      );
+      setAdminChangeForm({ oldPassword: "", newPassword: "" });
       applySession(null);
       resetAppState();
       openSuccessBox("密碼修改成功，請使用新密碼重新登入。", "密碼已更新");
@@ -1728,7 +1761,7 @@ export default function App() {
   const introText = session
     ? session.role === "admin"
       ? "管理員登入後會直接進入訂單管理 TAB，並可切換供應商管理、報表設定、CSV 匯入與系統設定。"
-      : "員工登入後會直接進入訂便當 TAB，並可切換到「我的訂單」查看訂單與修改密碼。"
+      : "員工登入後會直接進入訂便當 TAB，並可切換到「我的訂單」查看訂單或切到「修改密碼」。"
     : "登入成功後，系統會依帳號角色直接導向對應的 TAB 主頁，不再顯示員工入口或管理員入口選擇頁。";
 
   const currentTabs = session ? tabsForRole(session.role) : [];
@@ -1964,7 +1997,7 @@ export default function App() {
                 ) : null}
 
                 {activeTab === "employee-orders" ? (
-                  <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
+                  <div className="grid gap-6">
                     <div className="space-y-4 rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
                       <div>
                         <p className="text-sm uppercase tracking-[0.35em] text-clay/80">My Orders</p>
@@ -2010,6 +2043,11 @@ export default function App() {
                         )}
                       </div>
                     </div>
+                  </div>
+                ) : null}
+
+                {activeTab === "employee-change-password" ? (
+                  <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
                     <div className="space-y-4 rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
                       <div>
                         <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Security</p>
@@ -2020,9 +2058,9 @@ export default function App() {
                         <input
                           className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
                           type="password"
-                          value={changeForm.oldPassword}
+                          value={employeeChangeForm.oldPassword}
                           onChange={(event) =>
-                            setChangeForm((current) => ({ ...current, oldPassword: event.target.value }))
+                            setEmployeeChangeForm((current) => ({ ...current, oldPassword: event.target.value }))
                           }
                         />
                       </label>
@@ -2031,22 +2069,21 @@ export default function App() {
                         <input
                           className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
                           type="password"
-                          value={changeForm.newPassword}
+                          value={employeeChangeForm.newPassword}
                           onChange={(event) =>
-                            setChangeForm((current) => ({ ...current, newPassword: event.target.value }))
+                            setEmployeeChangeForm((current) => ({ ...current, newPassword: event.target.value }))
                           }
                         />
                       </label>
                       <button
                         className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => void submitChangePassword()}
+                        onClick={() => void submitEmployeeChangePassword()}
                         type="button"
                         disabled={loading}
                       >
                         更新密碼
                       </button>
                     </div>
-
                     <div className="rounded-[1.75rem] border border-ink/10 bg-white p-6 text-sm leading-7 text-ink/65">
                       修改密碼完成後，系統會要求重新登入；若要新增或更換訂單，請切回「訂便當」TAB 操作。
                     </div>
@@ -3273,6 +3310,50 @@ export default function App() {
 
                 {activeTab === "admin-settings" ? (
                   <div className="grid gap-6">
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-[#fcfbf7] p-6">
+                      <section className="space-y-4">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Security</p>
+                          <h3 className="mt-3 text-xl font-semibold">修改自己的密碼</h3>
+                          <p className="mt-2 text-sm leading-7 text-ink/65">
+                            管理員可在系統設定中直接更新個人密碼；成功後會立即要求重新登入。
+                          </p>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label className="grid gap-2 text-sm text-ink/70">
+                            舊密碼
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              type="password"
+                              value={adminChangeForm.oldPassword}
+                              onChange={(event) =>
+                                setAdminChangeForm((current) => ({ ...current, oldPassword: event.target.value }))
+                              }
+                            />
+                          </label>
+                          <label className="grid gap-2 text-sm text-ink/70">
+                            新密碼
+                            <input
+                              className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                              type="password"
+                              value={adminChangeForm.newPassword}
+                              onChange={(event) =>
+                                setAdminChangeForm((current) => ({ ...current, newPassword: event.target.value }))
+                              }
+                            />
+                          </label>
+                        </div>
+                        <button
+                          className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => void submitAdminChangePassword()}
+                          type="button"
+                          disabled={loading}
+                        >
+                          更新密碼
+                        </button>
+                      </section>
+                    </article>
+
                     <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
                       <section className="space-y-4">
                         <div>

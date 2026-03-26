@@ -32,12 +32,16 @@
 - **WHEN** 非管理員員工透過 `POST /api/admin/auth/login` 送出有效員工憑證
 - **THEN** 系統拒絕請求並回傳角色不符錯誤
 
-### Requirement: 員工登入後可修改密碼
-系統 SHALL 允許已登入員工透過 `PATCH /api/auth/change-password` 修改目前密碼。系統 MUST 要求舊密碼、驗證新密碼格式為 8 到 16 碼且同時包含英文大小寫，並僅在舊密碼正確時更新密碼雜湊。修改成功後，系統 SHALL 作廢該員工所有未失效 refresh token，並要求員工重新登入。
+### Requirement: 員工與管理員登入後可修改自己的密碼
+系統 SHALL 允許已登入員工透過 `PATCH /api/auth/change-password` 修改目前密碼，並由前端主 TAB 的「修改密碼」頁提供入口。系統 SHALL 允許已登入管理員透過 `PATCH /api/admin/auth/change-password` 修改目前密碼，並由前端「系統設定」中的密碼區塊提供入口。系統 MUST 要求舊密碼、驗證新密碼格式為 8 到 16 碼且同時包含英文大小寫，並僅在舊密碼正確時更新密碼雜湊。修改成功後，系統 SHALL 作廢該使用者所有未失效 refresh token，並要求重新登入。
 
 #### Scenario: 修改密碼成功後所有 refresh token 失效
 - **WHEN** 已登入員工送出正確的舊密碼與符合規範的新密碼
 - **THEN** 系統更新密碼雜湊、作廢該員工所有 refresh token，並要求重新登入
+
+#### Scenario: 管理員從系統設定修改密碼成功
+- **WHEN** 已登入管理員在「系統設定」送出正確的舊密碼與符合規範的新密碼
+- **THEN** 系統更新密碼雜湊、作廢該管理員所有 refresh token，並要求重新登入
 
 ### Requirement: 認證相關密碼通知必須透過統一 mail delivery configuration 發送
 系統 SHALL 讓忘記密碼與臨時密碼通知透過統一 mail delivery configuration 發送。當 `mail mode = mock` 時，系統 MUST 不連線外部 SMTP；當 `mail mode = smtp` 時，系統 MUST 使用配置好的 SMTP 設定執行寄信。
