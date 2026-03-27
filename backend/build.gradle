@@ -23,6 +23,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.apache.commons:commons-csv:1.14.0'
+    implementation 'org.apache.pdfbox:pdfbox:3.0.4'
     implementation 'io.jsonwebtoken:jjwt-api:0.12.7'
     runtimeOnly 'com.mysql:mysql-connector-j'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.7'

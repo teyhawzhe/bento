@@ -2,6 +2,7 @@ package com.lovius.bento.dao;
 
 import com.lovius.bento.model.AdminOrderView;
 import com.lovius.bento.model.BentoOrder;
+import com.lovius.bento.model.EmployeeOrderReportRow;
 import com.lovius.bento.model.SupplierOrderNotificationRow;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -113,6 +114,35 @@ public class JdbcOrderRepository implements OrderRepository {
     }
 
     @Override
+    public List<EmployeeOrderReportRow> findEmployeeOrderReportRows(LocalDate dateFrom, LocalDate dateTo, String sortBy) {
+        StringBuilder sql = new StringBuilder(
+                """
+                SELECT ord.order_date,
+                       department.name AS department_name,
+                       employee.name AS employee_name,
+                       menu.name AS menu_name,
+                       supplier.name AS supplier_name
+                FROM orders ord
+                JOIN employees employee ON employee.id = ord.employee_id
+                JOIN departments department ON department.id = employee.department_id
+                JOIN menus menu ON menu.id = ord.menu_id
+                JOIN suppliers supplier ON supplier.id = menu.supplier_id
+                WHERE 1 = 1
+                """);
+        List<Object> parameters = new ArrayList<>();
+        if (dateFrom != null) {
+            sql.append(" AND ord.order_date >= ?");
+            parameters.add(dateFrom);
+        }
+        if (dateTo != null) {
+            sql.append(" AND ord.order_date <= ?");
+            parameters.add(dateTo);
+        }
+        sql.append(" ORDER BY ").append(resolveReportSort(sortBy));
+        return jdbcTemplate.query(sql.toString(), this::mapEmployeeOrderReportRow, parameters.toArray());
+    }
+
+    @Override
     public List<SupplierOrderNotificationRow> findSupplierOrderNotificationRows(LocalDate notifyDate) {
         return jdbcTemplate.query(
                 """
@@ -207,5 +237,27 @@ public class JdbcOrderRepository implements OrderRepository {
                 resultSet.getString("supplier_email"),
                 resultSet.getString("menu_name"),
                 resultSet.getLong("quantity"));
+    }
+
+    private EmployeeOrderReportRow mapEmployeeOrderReportRow(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new EmployeeOrderReportRow(
+                resultSet.getDate("order_date").toLocalDate(),
+                resultSet.getString("department_name"),
+                resultSet.getString("employee_name"),
+                resultSet.getString("menu_name"),
+                resultSet.getString("supplier_name"));
+    }
+
+    private String resolveReportSort(String sortBy) {
+        if (sortBy == null) {
+            return "ord.order_date ASC, department.name ASC, employee.name ASC, supplier.name ASC";
+        }
+        return switch (sortBy) {
+            case "department" -> "department.name ASC, ord.order_date ASC, employee.name ASC, supplier.name ASC";
+            case "employee" -> "employee.name ASC, ord.order_date ASC, department.name ASC, supplier.name ASC";
+            case "supplier" -> "supplier.name ASC, ord.order_date ASC, department.name ASC, employee.name ASC";
+            case "date" -> "ord.order_date ASC, department.name ASC, employee.name ASC, supplier.name ASC";
+            default -> "ord.order_date ASC, department.name ASC, employee.name ASC, supplier.name ASC";
+        };
     }
 }

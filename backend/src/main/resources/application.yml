@@ -17,6 +17,8 @@ app:
       password: ${APP_MAIL_SMTP_PASSWORD:}
       auth: ${APP_MAIL_SMTP_AUTH:true}
       starttls: ${APP_MAIL_SMTP_STARTTLS:true}
+  pdf:
+    font-path: ${APP_PDF_FONT_PATH:}
 
 spring:
   profiles:

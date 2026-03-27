@@ -6,8 +6,12 @@ COPY src ./src
 
 RUN gradle bootJar --no-daemon
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre
 WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /workspace/build/libs/*.jar app.jar
 

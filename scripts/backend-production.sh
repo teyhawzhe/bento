@@ -8,6 +8,10 @@ cd "$PROJECT_ROOT/backend"
 
 export SPRING_PROFILES_ACTIVE=production
 
+if [ -z "${APP_PDF_FONT_PATH:-}" ] && [ -f "/System/Library/Fonts/Supplemental/Arial Unicode.ttf" ]; then
+  export APP_PDF_FONT_PATH="/System/Library/Fonts/Supplemental/Arial Unicode.ttf"
+fi
+
 if [ -x "./gradlew" ]; then
   exec ./gradlew bootRun
 fi

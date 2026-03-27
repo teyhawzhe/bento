@@ -95,6 +95,16 @@ export interface MonthlyBillingLog {
   createdAt: string;
 }
 
+export type EmployeeOrderReportSort = "date" | "department" | "employee" | "supplier";
+
+export interface EmployeeOrderReport {
+  orderDate: string;
+  departmentName: string;
+  employeeName: string;
+  menuName: string;
+  supplierName: string;
+}
+
 export interface Menu {
   id: number;
   supplierId: number;

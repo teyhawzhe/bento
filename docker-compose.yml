@@ -21,6 +21,7 @@ services:
       APP_MAIL_SMTP_PORT: ${APP_MAIL_SMTP_PORT:-587}
       APP_MAIL_SMTP_USERNAME: ${APP_MAIL_SMTP_USERNAME:-}
       APP_MAIL_SMTP_PASSWORD: ${APP_MAIL_SMTP_PASSWORD:-}
+      APP_PDF_FONT_PATH: ${APP_PDF_FONT_PATH:-/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc}
     ports:
       - "8080:8080"
     depends_on:

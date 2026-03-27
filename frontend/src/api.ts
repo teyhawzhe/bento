@@ -4,6 +4,8 @@ import type {
   CsvImportRow,
   CsvImportType,
   Department,
+  EmployeeOrderReport,
+  EmployeeOrderReportSort,
   EmployeeMenuOption,
   EmployeeSummary,
   ErrorEmail,
@@ -643,4 +645,30 @@ export function getMonthlyBillingLogs(token: string) {
       Authorization: `Bearer ${token}`,
     },
   }));
+}
+
+export function getEmployeeOrderReports(
+  token: string,
+  params: { date_from: string; date_to: string; sort_by?: EmployeeOrderReportSort },
+) {
+  return unwrap<EmployeeOrderReport[]>(api.get("/admin/reports/orders", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    params,
+  }));
+}
+
+export async function downloadEmployeeOrderReportPdf(
+  token: string,
+  params: { date_from: string; date_to: string; sort_by?: EmployeeOrderReportSort },
+) {
+  const response = await api.get<Blob>("/admin/reports/orders/pdf", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    params,
+    responseType: "blob",
+  });
+  return response.data;
 }

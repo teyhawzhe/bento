@@ -17,8 +17,10 @@ import {
   createSupplier,
   deleteErrorEmail,
   deleteReportEmail,
+  downloadEmployeeOrderReportPdf,
   downloadImportTemplate,
   forgotPassword,
+  getEmployeeOrderReports,
   getAdminOrders,
   getDepartments,
   getEmployeeMenus,
@@ -48,6 +50,8 @@ import type {
   CsvImportRow,
   CsvImportType,
   Department,
+  EmployeeOrderReport,
+  EmployeeOrderReportSort,
   EmployeeMenuOption,
   EmployeeSummary,
   ErrorEmail,
@@ -75,6 +79,10 @@ const ADMIN_TABS = [
   { id: "admin-departments", label: "部門管理" },
   { id: "admin-import", label: "CSV 匯入" },
   { id: "admin-settings", label: "系統設定" },
+] as const;
+const ADMIN_REPORT_TABS = [
+  { id: "employee-order-report", label: "員工訂餐報表" },
+  { id: "monthly-billing", label: "月結報表" },
 ] as const;
 const ADMIN_SUPPLIER_TABS = [
   { id: "supplier-directory", label: "供應商管理" },
@@ -148,6 +156,7 @@ const CSV_IMPORT_CARDS: Array<{
 type EmployeeTabId = (typeof EMPLOYEE_TABS)[number]["id"];
 type AdminTabId = (typeof ADMIN_TABS)[number]["id"];
 type AdminSupplierTabId = (typeof ADMIN_SUPPLIER_TABS)[number]["id"];
+type AdminReportTabId = (typeof ADMIN_REPORT_TABS)[number]["id"];
 type AppTabId = EmployeeTabId | AdminTabId;
 type MessageBoxVariant = "success" | "error" | "warning" | "confirm";
 
@@ -411,6 +420,7 @@ export default function App() {
   const [session, setSession] = useState<SessionUser | null>(readSession);
   const [activeTab, setActiveTab] = useState<AppTabId>(() => defaultTabForRole("employee"));
   const [adminSupplierTab, setAdminSupplierTab] = useState<AdminSupplierTabId>("supplier-directory");
+  const [adminReportTab, setAdminReportTab] = useState<AdminReportTabId>("employee-order-report");
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [messageBox, setMessageBox] = useState<MessageBoxState>({
     isOpen: false,
@@ -435,6 +445,8 @@ export default function App() {
   const [reportEmails, setReportEmails] = useState<ReportEmail[]>([]);
   const [adminOrders, setAdminOrders] = useState<AdminOrder[]>([]);
   const [monthlyBillingLogs, setMonthlyBillingLogs] = useState<MonthlyBillingLog[]>([]);
+  const [employeeOrderReports, setEmployeeOrderReports] = useState<EmployeeOrderReport[]>([]);
+  const [hasLoadedEmployeeOrderReports, setHasLoadedEmployeeOrderReports] = useState(false);
   const [csvImportFiles, setCsvImportFiles] = useState<Partial<Record<CsvImportType, File | null>>>({});
   const [csvImportResults, setCsvImportResults] = useState<Partial<Record<CsvImportType, CsvImportRow[]>>>({});
   const [csvImportErrors, setCsvImportErrors] = useState<Partial<Record<CsvImportType, CsvImportErrorData | null>>>({});
@@ -468,6 +480,15 @@ export default function App() {
   });
   const [errorEmailForm, setErrorEmailForm] = useState({ email: "" });
   const [reportEmailForm, setReportEmailForm] = useState({ email: "" });
+  const [employeeOrderReportFilters, setEmployeeOrderReportFilters] = useState<{
+    dateFrom: string;
+    dateTo: string;
+    sortBy: EmployeeOrderReportSort;
+  }>({
+    dateFrom: todayDate(),
+    dateTo: todayDate(),
+    sortBy: "date",
+  });
   const [menuForm, setMenuForm] = useState({
     name: "",
     category: CATEGORY_OPTIONS[0],
@@ -518,6 +539,8 @@ export default function App() {
     setReportEmails([]);
     setAdminOrders([]);
     setMonthlyBillingLogs([]);
+    setEmployeeOrderReports([]);
+    setHasLoadedEmployeeOrderReports(false);
     setSelectedSupplier(null);
     setDeadlineMessage("");
     setCsvImportFiles({});
@@ -1570,6 +1593,76 @@ export default function App() {
       openSuccessBox("月結報表已開始執行，請至下方發送記錄查看最新結果。", "月結報表已觸發");
     } catch (unknownError) {
       handleHttpError(unknownError, "手動觸發月結報表失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitEmployeeOrderReportQuery() {
+    if (!session) {
+      return;
+    }
+    if (
+      !validateWarning("請完整選擇查詢日期起訖。", [
+        !isBlank(employeeOrderReportFilters.dateFrom),
+        !isBlank(employeeOrderReportFilters.dateTo),
+      ])
+    ) {
+      return;
+    }
+    if (employeeOrderReportFilters.dateFrom > employeeOrderReportFilters.dateTo) {
+      openWarningBox("查詢起日不可晚於迄日。");
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await getEmployeeOrderReports(session.token, {
+        date_from: employeeOrderReportFilters.dateFrom,
+        date_to: employeeOrderReportFilters.dateTo,
+        sort_by: employeeOrderReportFilters.sortBy,
+      });
+      setEmployeeOrderReports(response.data);
+      setHasLoadedEmployeeOrderReports(true);
+      openSuccessBox("員工訂餐報表已更新。", "查詢完成");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "員工訂餐報表查詢失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleEmployeeOrderReportPdfDownload() {
+    if (!session) {
+      return;
+    }
+    if (
+      !validateWarning("請完整選擇查詢日期起訖。", [
+        !isBlank(employeeOrderReportFilters.dateFrom),
+        !isBlank(employeeOrderReportFilters.dateTo),
+      ])
+    ) {
+      return;
+    }
+    if (employeeOrderReportFilters.dateFrom > employeeOrderReportFilters.dateTo) {
+      openWarningBox("查詢起日不可晚於迄日。");
+      return;
+    }
+    setLoading(true);
+    try {
+      const blob = await downloadEmployeeOrderReportPdf(session.token, {
+        date_from: employeeOrderReportFilters.dateFrom,
+        date_to: employeeOrderReportFilters.dateTo,
+        sort_by: employeeOrderReportFilters.sortBy,
+      });
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = "employee-order-report.pdf";
+      anchor.click();
+      window.URL.revokeObjectURL(objectUrl);
+      openSuccessBox("員工訂餐報表 PDF 已下載。", "下載完成");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "員工訂餐報表 PDF 下載失敗");
     } finally {
       setLoading(false);
     }
@@ -2771,128 +2864,262 @@ export default function App() {
                   ) : null}
 
                 {activeTab === "admin-reports" ? (
-                  <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-                    <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
-                      <div className="space-y-8">
-                        <section className="space-y-4">
-                          <div>
-                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Monthly Billing</p>
-                            <h3 className="mt-3 text-xl font-semibold">月結報表</h3>
-                            <p className="mt-2 text-sm leading-7 text-ink/65">
-                              手動重跑當期月結報表，會寄給供應商信箱與 A008 報表收件清單。
-                            </p>
-                          </div>
-                          <button
-                            className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                            onClick={() => void submitMonthlyBillingTrigger()}
-                            type="button"
-                            disabled={loading}
-                          >
-                            手動觸發月結報表
-                          </button>
-                        </section>
+                  <div className="grid gap-6">
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                      <div>
+                        <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Reports Workspace</p>
+                        <h3 className="mt-3 text-xl font-semibold">報表設定</h3>
+                        <p className="mt-2 text-sm leading-7 text-ink/65">
+                          在這裡切換員工訂餐報表與月結報表相關設定，不需離開目前頁面。
+                        </p>
+                      </div>
+                      <div className="mt-6">
+                        <TabBar tabs={[...ADMIN_REPORT_TABS]} activeTab={adminReportTab} onChange={setAdminReportTab} />
+                      </div>
+                    </article>
 
-                        <section className="space-y-4">
-                          <div>
-                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Report Recipients</p>
-                            <h3 className="mt-3 text-xl font-semibold">月結報表收件信箱</h3>
+                    {adminReportTab === "employee-order-report" ? (
+                      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+                        <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
+                          <div className="space-y-5">
+                            <div>
+                              <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Employee Order Report</p>
+                              <h3 className="mt-3 text-xl font-semibold">員工訂餐報表</h3>
+                              <p className="mt-2 text-sm leading-7 text-ink/65">
+                                依日期區間與排序條件查詢員工訂餐明細，並可直接下載同條件 PDF。
+                              </p>
+                            </div>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <label className="grid gap-2 text-sm text-ink/70">
+                                起日
+                                <input
+                                  className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                                  type="date"
+                                  value={employeeOrderReportFilters.dateFrom}
+                                  onChange={(event) =>
+                                    setEmployeeOrderReportFilters((current) => ({
+                                      ...current,
+                                      dateFrom: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </label>
+                              <label className="grid gap-2 text-sm text-ink/70">
+                                迄日
+                                <input
+                                  className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                                  type="date"
+                                  value={employeeOrderReportFilters.dateTo}
+                                  onChange={(event) =>
+                                    setEmployeeOrderReportFilters((current) => ({
+                                      ...current,
+                                      dateTo: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </label>
+                            </div>
+                            <label className="grid gap-2 text-sm text-ink/70">
+                              排序方式
+                              <select
+                                className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                                value={employeeOrderReportFilters.sortBy}
+                                onChange={(event) =>
+                                  setEmployeeOrderReportFilters((current) => ({
+                                    ...current,
+                                    sortBy: event.target.value as EmployeeOrderReportSort,
+                                  }))
+                                }
+                              >
+                                <option value="date">日期</option>
+                                <option value="department">部門</option>
+                                <option value="employee">員工姓名</option>
+                                <option value="supplier">廠商</option>
+                              </select>
+                            </label>
+                            <div className="flex flex-wrap gap-3">
+                              <button
+                                className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => void submitEmployeeOrderReportQuery()}
+                                type="button"
+                                disabled={loading}
+                              >
+                                查詢報表
+                              </button>
+                              <button
+                                className="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => void handleEmployeeOrderReportPdfDownload()}
+                                type="button"
+                                disabled={loading}
+                              >
+                                下載 PDF
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex gap-3">
-                            <input
-                              className="flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                              placeholder="finance-reports@company.local"
-                              value={reportEmailForm.email}
-                              onChange={(event) => setReportEmailForm({ email: event.target.value })}
-                            />
-                            <button
-                              className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                              onClick={() => void submitCreateReportEmail()}
-                              type="button"
-                              disabled={loading}
-                            >
-                              新增
-                            </button>
+                        </article>
+
+                        <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                          <div className="flex flex-wrap items-center justify-between gap-4">
+                            <div>
+                              <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Preview</p>
+                              <h3 className="mt-3 text-xl font-semibold">畫面預覽</h3>
+                            </div>
+                            <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                              {employeeOrderReports.length} 筆
+                            </span>
                           </div>
-                          <div className="grid gap-3">
-                            {reportEmails.length ? (
-                              reportEmails.map((entry) => (
-                                <div
-                                  key={entry.id}
-                                  className="flex items-center justify-between gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-4"
-                                >
-                                  <div>
-                                    <p className="font-medium text-ink">{entry.email}</p>
-                                    <p className="mt-1 text-xs text-ink/45">
-                                      建立者 #{entry.createdBy} / {formatDateTime(entry.createdAt)}
-                                    </p>
+                          <div className="mt-6 grid gap-4">
+                            {employeeOrderReports.length ? (
+                              employeeOrderReports.map((report, index) => (
+                                <div key={`${report.orderDate}-${report.employeeName}-${index}`} className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
+                                  <div className="grid gap-2 sm:grid-cols-2">
+                                    <p className="text-sm text-ink/65">日期 {formatDate(report.orderDate)}</p>
+                                    <p className="text-sm text-ink/65">部門 {report.departmentName}</p>
+                                    <p className="text-sm text-ink/65">員工 {report.employeeName}</p>
+                                    <p className="text-sm text-ink/65">廠商 {report.supplierName}</p>
                                   </div>
-                                  <button
-                                    className="rounded-full border border-ink/10 px-4 py-2 text-sm"
-                                    onClick={() => confirmDeleteReportEmail(entry.id)}
-                                    type="button"
-                                    disabled={loading}
-                                  >
-                                    刪除
-                                  </button>
+                                  <p className="mt-3 font-medium text-ink">{report.menuName}</p>
                                 </div>
                               ))
+                            ) : hasLoadedEmployeeOrderReports ? (
+                              <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
+                                目前查無符合條件的員工訂餐資料
+                              </div>
                             ) : (
-                              <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
-                                目前尚未設定報表收件信箱
+                              <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
+                                請先選擇日期區間與排序方式後查詢
                               </div>
                             )}
                           </div>
-                        </section>
+                        </article>
                       </div>
-                    </article>
+                    ) : null}
 
-                    <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
-                      <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div>
-                          <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Billing Logs</p>
-                          <h3 className="mt-3 text-xl font-semibold">月結發送記錄</h3>
-                        </div>
-                        <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
-                          {monthlyBillingLogs.length} 筆
-                        </span>
-                      </div>
-                      <div className="mt-6 grid gap-4">
-                        {monthlyBillingLogs.length ? (
-                          monthlyBillingLogs.map((log) => (
-                            <div key={log.id} className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                  <p className="font-medium text-ink">{log.supplierName}</p>
-                                  <p className="mt-1 text-sm text-ink/65">
-                                    期間 {formatDate(log.billingPeriodStart)} - {formatDate(log.billingPeriodEnd)}
-                                  </p>
-                                  <p className="text-sm text-ink/55">收件者 {log.emailTo}</p>
-                                </div>
-                                <span
-                                  className={`rounded-full px-3 py-1 text-xs font-medium ${
-                                    log.status === "sent"
-                                      ? "bg-emerald-100 text-emerald-700"
-                                      : "bg-red-100 text-red-700"
-                                  }`}
+                    {adminReportTab === "monthly-billing" ? (
+                      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                        <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
+                          <div className="space-y-8">
+                            <section className="space-y-4">
+                              <div>
+                                <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Monthly Billing</p>
+                                <h3 className="mt-3 text-xl font-semibold">月結報表</h3>
+                                <p className="mt-2 text-sm leading-7 text-ink/65">
+                                  手動重跑當期月結報表，會寄給供應商信箱與 A008 報表收件清單。
+                                </p>
+                              </div>
+                              <button
+                                className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => void submitMonthlyBillingTrigger()}
+                                type="button"
+                                disabled={loading}
+                              >
+                                手動觸發月結報表
+                              </button>
+                            </section>
+
+                            <section className="space-y-4">
+                              <div>
+                                <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Report Recipients</p>
+                                <h3 className="mt-3 text-xl font-semibold">月結報表收件信箱</h3>
+                              </div>
+                              <div className="flex gap-3">
+                                <input
+                                  className="flex-1 rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                                  placeholder="finance-reports@company.local"
+                                  value={reportEmailForm.email}
+                                  onChange={(event) => setReportEmailForm({ email: event.target.value })}
+                                />
+                                <button
+                                  className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                  onClick={() => void submitCreateReportEmail()}
+                                  type="button"
+                                  disabled={loading}
                                 >
-                                  {log.status}
-                                </span>
+                                  新增
+                                </button>
                               </div>
-                              <div className="mt-3 text-sm text-ink/60">
-                                <p>觸發者 {log.triggeredBy ? `#${log.triggeredBy}` : "系統排程"}</p>
-                                <p>建立時間 {formatDateTime(log.createdAt)}</p>
-                                {log.sentAt ? <p>寄送時間 {formatDateTime(log.sentAt)}</p> : null}
-                                {log.errorMessage ? <p className="text-red-700">錯誤：{log.errorMessage}</p> : null}
+                              <div className="grid gap-3">
+                                {reportEmails.length ? (
+                                  reportEmails.map((entry) => (
+                                    <div
+                                      key={entry.id}
+                                      className="flex items-center justify-between gap-3 rounded-2xl border border-ink/10 bg-white px-4 py-4"
+                                    >
+                                      <div>
+                                        <p className="font-medium text-ink">{entry.email}</p>
+                                        <p className="mt-1 text-xs text-ink/45">
+                                          建立者 #{entry.createdBy} / {formatDateTime(entry.createdAt)}
+                                        </p>
+                                      </div>
+                                      <button
+                                        className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                                        onClick={() => confirmDeleteReportEmail(entry.id)}
+                                        type="button"
+                                        disabled={loading}
+                                      >
+                                        刪除
+                                      </button>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="rounded-2xl border border-ink/10 bg-white px-4 py-4 text-sm text-ink/65">
+                                    目前尚未設定報表收件信箱
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
-                            目前尚無月結發送記錄
+                            </section>
                           </div>
-                        )}
+                        </article>
+
+                        <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                          <div className="flex flex-wrap items-center justify-between gap-4">
+                            <div>
+                              <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Billing Logs</p>
+                              <h3 className="mt-3 text-xl font-semibold">月結發送記錄</h3>
+                            </div>
+                            <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                              {monthlyBillingLogs.length} 筆
+                            </span>
+                          </div>
+                          <div className="mt-6 grid gap-4">
+                            {monthlyBillingLogs.length ? (
+                              monthlyBillingLogs.map((log) => (
+                                <div key={log.id} className="rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-5">
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                      <p className="font-medium text-ink">{log.supplierName}</p>
+                                      <p className="mt-1 text-sm text-ink/65">
+                                        期間 {formatDate(log.billingPeriodStart)} - {formatDate(log.billingPeriodEnd)}
+                                      </p>
+                                      <p className="text-sm text-ink/55">收件者 {log.emailTo}</p>
+                                    </div>
+                                    <span
+                                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                                        log.status === "sent"
+                                          ? "bg-emerald-100 text-emerald-700"
+                                          : "bg-red-100 text-red-700"
+                                      }`}
+                                    >
+                                      {log.status}
+                                    </span>
+                                  </div>
+                                  <div className="mt-3 text-sm text-ink/60">
+                                    <p>觸發者 {log.triggeredBy ? `#${log.triggeredBy}` : "系統排程"}</p>
+                                    <p>建立時間 {formatDateTime(log.createdAt)}</p>
+                                    {log.sentAt ? <p>寄送時間 {formatDateTime(log.sentAt)}</p> : null}
+                                    {log.errorMessage ? <p className="text-red-700">錯誤：{log.errorMessage}</p> : null}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] p-5 text-sm text-ink/65">
+                                目前尚無月結發送記錄
+                              </div>
+                            )}
+                          </div>
+                        </article>
                       </div>
-                    </article>
+                    ) : null}
                   </div>
                 ) : null}
 

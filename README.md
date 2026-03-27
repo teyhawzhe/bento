@@ -125,6 +125,7 @@ mail delivery 採 `config-based` 切換：
 - `APP_MAIL_SMTP_PASSWORD`
 - `APP_MAIL_SMTP_AUTH`
 - `APP_MAIL_SMTP_STARTTLS`
+- `APP_PDF_FONT_PATH`
 
 Gmail SMTP 測試範例：
 
@@ -139,6 +140,12 @@ APP_MAIL_SMTP_USERNAME=your-account@gmail.com \
 APP_MAIL_SMTP_PASSWORD=your-app-password \
 ./gradlew bootRun
 ```
+
+PDF 中文字型：
+
+- A013 員工訂餐報表 PDF 需要可顯示中文的字型檔
+- 本機 macOS 可設為：`APP_PDF_FONT_PATH=/System/Library/Fonts/Supplemental/Arial Unicode.ttf`
+- Docker Compose 預設會帶入：`/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`
 
 建議啟動方式：
 
