@@ -3,7 +3,7 @@ server:
 
 app:
   jwt:
-    secret: "change-this-demo-secret-for-production-change-this-demo-secret"
+    secret: ${APP_JWT_SECRET:change-this-demo-secret-for-production-change-this-demo-secret}
     issuer: "lovius-bento"
     expiration-minutes: 240
     refresh-expiration-days: 14

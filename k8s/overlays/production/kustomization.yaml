@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: bento-production
+
+resources:
+  - ../../base
+  - backend-config.yaml
+  - frontend-config.yaml
+
+images:
+  - name: lovius/bento-backend
+    newTag: production
+  - name: lovius/bento-frontend
+    newTag: production
+
+patches:
+  - path: ingress-patch.yaml

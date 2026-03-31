@@ -168,6 +168,12 @@ PDF 中文字型：
 - `backend-dev.bat` / `backend-staging.bat` / `backend-production.bat`: Windows 版本的 backend 啟動腳本
 - `dev-compose.sh`: 直接執行 `docker compose up --build`
 
+前端 API 連線策略：
+
+- `npm run dev` / `./scripts/dev-frontend.sh` 會透過 Vite proxy 將 `/api` 轉送到 `http://localhost:8080`
+- Docker / Kubernetes 的 frontend Nginx 會將 `/api` 反向代理到 `backend:8080`
+- 若需要覆寫，也可在 build 時提供 `VITE_API_BASE_URL`
+
 ## Docker Compose
 
 - `frontend`: 使用 Nginx 提供打包後的 React 靜態頁面，對外開放 `5173`
@@ -176,6 +182,61 @@ PDF 中文字型：
 
 目前後端已改為 JDBC + MySQL schema 邊界，`mysql` 服務可直接承接 `employees`、`suppliers`、`menus`、`orders` 等資料表。
 `docker compose` 會預設注入 `SPRING_PROFILES_ACTIVE=dev` 與 `APP_MAIL_MODE=mock`，也可在執行前自行覆寫。
+
+## Kubernetes
+
+專案現在也提供 Kubernetes 的 `base + overlays` 結構，位於 [`k8s/README.md`](./k8s/README.md)。
+
+- `k8s/base`: 共用的 frontend、backend、service、ingress 定義
+- `k8s/overlays/dev`: 以 minikube 為目標的開發環境，包含 in-cluster MySQL
+- `k8s/overlays/staging`: staging 環境，預設連接外部資料庫
+- `k8s/overlays/production`: production 環境，預設連接外部資料庫
+
+設計原則：
+
+- backend 仍透過 `SPRING_PROFILES_ACTIVE` 對應 `dev`、`staging`、`production`
+- frontend 仍透過 `VITE_API_BASE_URL` 決定 API 位置
+- Kubernetes 主要負責注入對應環境值，而不是重新定義另一套環境模型
+- 敏感資訊例如 DB 密碼、SMTP 密碼、JWT secret 不會直接寫進版本庫，改由 cluster Secret 或外部注入提供
+
+### Frontend Image Build Strategy
+
+frontend Docker image 現在可透過 build arg 注入 `VITE_API_BASE_URL`：
+
+```bash
+docker build --build-arg VITE_API_BASE_URL=/api -t lovius/bento-frontend:dev ./frontend
+docker build --build-arg VITE_API_BASE_URL=/api -t lovius/bento-frontend:staging ./frontend
+docker build --build-arg VITE_API_BASE_URL=/api -t lovius/bento-frontend:production ./frontend
+```
+
+若三個 Kubernetes 環境都採同一個 Ingress 路由模型，可共用 `/api`。若未來不同環境需要不同 API host，也可在 build 時改成絕對 URL。
+
+### Minikube 邊界
+
+- `dev` overlay 的目標環境是 minikube
+- 但目前 repo 不要求每位開發者本機都安裝或實際執行 minikube
+- 若本機資源不足，可先完成 manifests、ConfigMap/Secret 準備與靜態驗證
+
+### Secret 準備
+
+各 overlay 都提供 `*.example.env` 作為 Secret 範本，例如：
+
+- `k8s/overlays/dev/backend-secrets.example.env`
+- `k8s/overlays/dev/mysql-secrets.example.env`
+- `k8s/overlays/staging/backend-secrets.example.env`
+- `k8s/overlays/production/backend-secrets.example.env`
+
+這些檔案只提供 key 與 placeholder，實際部署時請在目標 cluster 建立 Secret，不要把真實值提交進版本庫。
+
+### 靜態驗證
+
+在沒有本機 Kubernetes 叢集的情況下，可先執行：
+
+```bash
+./scripts/validate-k8s.sh
+```
+
+若系統上有 `kubectl` 或 `kustomize`，此腳本也會嘗試 build 各 overlay；若沒有，仍會完成結構檢查。
 
 ## 驗證紀錄
 
@@ -188,6 +249,7 @@ PDF 中文字型：
 - 已補上 `dev / staging / production` 三組 backend 環境設定與 `mock / smtp` mail mode 切換。
 - 已確認 `frontend` 的 `npm run build` 與 `backend` 的 `./gradlew test` 可成功執行。
 - `docker compose config` 已通過，可確認 compose 結構正確。
+- 已於 2026-03-31 在本機 minikube 驗證 `k8s/overlays/dev`：`kubectl apply -k` 成功，`backend` / `frontend` / `mysql` 三個 pods 均達到 `Running`，且 frontend 可透過 minikube service tunnel 回應 `200`。
 - 目前尚未完成真正的瀏覽器 E2E 驗證與實際外部 SMTP / MySQL 整合驗證。
 
 ## A003 / A005 / A006 邊界

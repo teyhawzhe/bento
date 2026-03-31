@@ -10,7 +10,15 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
-                .allowedOrigins("http://localhost:5173")
+                .allowedOriginPatterns(
+                        "http://localhost:*",
+                        "http://127.0.0.1:*",
+                        "http://bento-dev.local",
+                        "http://bento-dev.local:*",
+                        "https://localhost:*",
+                        "https://127.0.0.1:*",
+                        "https://bento-dev.local",
+                        "https://bento-dev.local:*")
                 .allowedMethods("GET", "POST", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
     }

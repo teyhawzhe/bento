@@ -1,21 +1,4 @@
-## Purpose
-定義 backend 在 `dev`、`staging`、`production` 三種環境下的設定載入、啟動方式與敏感資訊管理規則。
-
-## Requirements
-### Requirement: 系統必須支援 dev、staging、production 三組環境設定
-系統 SHALL 提供 `dev`、`staging`、`production` 三組可明確選擇的執行環境設定。每組環境 MUST 可透過啟動參數、環境變數或容器設定指定，且未指定時 MUST 有明確的預設策略。
-
-#### Scenario: 以 dev 環境啟動
-- **WHEN** 開發者以 `dev` 環境設定啟動 backend
-- **THEN** 系統載入 `dev` 對應的設定覆寫並成功啟動
-
-#### Scenario: 以 staging 環境啟動
-- **WHEN** 系統以 `staging` 環境設定啟動
-- **THEN** 系統載入 `staging` 對應的設定覆寫並成功啟動
-
-#### Scenario: 以 production 環境啟動
-- **WHEN** 系統以 `production` 環境設定啟動
-- **THEN** 系統載入 `production` 對應的設定覆寫並成功啟動
+## MODIFIED Requirements
 
 ### Requirement: 不同環境的 build 與 startup 方式必須可文件化且可重現
 系統 SHALL 為 `dev`、`staging`、`production` 提供明確且可重現的 build / startup 方式，讓開發者與部署流程可選擇目標環境並套用對應設定。當系統以 Kubernetes 部署時，文件 MUST 說明各環境如何對應到 Kubernetes deployment structure、如何指定目標 profile，以及哪些步驟可在沒有本機叢集的情況下先完成。
