@@ -137,3 +137,9 @@ CREATE TABLE IF NOT EXISTS notification_logs (
     KEY idx_notification_logs_notify_date (notify_date),
     KEY idx_notification_logs_status (status)
 );
+
+CREATE TABLE IF NOT EXISTS work_calendar (
+    date DATE NOT NULL,
+    is_workday BOOLEAN NOT NULL,
+    PRIMARY KEY (date)
+);

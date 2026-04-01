@@ -105,6 +105,11 @@ export interface EmployeeOrderReport {
   supplierName: string;
 }
 
+export interface WorkCalendarDay {
+  date: string;
+  isWorkday: boolean;
+}
+
 export interface Menu {
   id: number;
   supplierId: number;

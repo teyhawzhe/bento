@@ -22,6 +22,7 @@ import {
   forgotPassword,
   getEmployeeOrderReports,
   getAdminOrders,
+  getWorkCalendar,
   getDepartments,
   getEmployeeMenus,
   getEmployees,
@@ -32,17 +33,20 @@ import {
   getMyOrders,
   getSupplier,
   getSuppliers,
+  importWorkCalendar,
   importAdminCsv,
   login,
   logout as logoutRequest,
   updateEmployee,
   resetEmployeePassword,
   triggerMonthlyBilling,
+  generateWorkCalendar,
   updateDepartment,
   updateSupplier,
   updateEmployeeStatus,
   updateMenu,
   updateOrder,
+  updateWorkCalendar,
 } from "./api";
 import type {
   AdminOrder,
@@ -62,6 +66,7 @@ import type {
   SessionUser,
   Supplier,
   UserRole,
+  WorkCalendarDay,
 } from "./types";
 
 const SESSION_KEY = "bento-session";
@@ -77,6 +82,7 @@ const ADMIN_TABS = [
   { id: "admin-reports", label: "報表設定" },
   { id: "admin-employees", label: "員工管理" },
   { id: "admin-departments", label: "部門管理" },
+  { id: "admin-calendar", label: "行事曆設定" },
   { id: "admin-import", label: "CSV 匯入" },
   { id: "admin-settings", label: "系統設定" },
 ] as const;
@@ -84,6 +90,7 @@ const ADMIN_REPORT_TABS = [
   { id: "employee-order-report", label: "員工訂餐報表" },
   { id: "monthly-billing", label: "月結報表" },
 ] as const;
+const CALENDAR_WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"] as const;
 const ADMIN_SUPPLIER_TABS = [
   { id: "supplier-directory", label: "供應商管理" },
   { id: "supplier-menus", label: "建立菜單" },
@@ -258,6 +265,76 @@ function tomorrowDate() {
 
 function todayDate() {
   return toDateInputValue(new Date());
+}
+
+function padMonthDay(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function toCalendarDate(year: number, month: number, day: number) {
+  return `${year}-${padMonthDay(month)}-${padMonthDay(day)}`;
+}
+
+function defaultWorkdayForDate(year: number, month: number, day: number) {
+  const weekday = new Date(year, month - 1, day).getDay();
+  return weekday !== 0 && weekday !== 6;
+}
+
+function buildWorkCalendarDraft(days: WorkCalendarDay[]) {
+  return Object.fromEntries(days.map((day) => [day.date, day.isWorkday]));
+}
+
+function hasWorkCalendarChanges(days: WorkCalendarDay[], draft: Record<string, boolean>) {
+  return days.some((day) => draft[day.date] !== day.isWorkday);
+}
+
+function buildWorkCalendarCells(
+  year: number,
+  month: number,
+  days: WorkCalendarDay[],
+  draft: Record<string, boolean>,
+  isEditing: boolean,
+) {
+  const totalDays = new Date(year, month, 0).getDate();
+  const leadingBlanks = new Date(year, month - 1, 1).getDay();
+  const dayMap = new Map(days.map((day) => [day.date, day.isWorkday]));
+  const cells: Array<{
+    key: string;
+    label: string;
+    date: string | null;
+    isWorkday: boolean;
+  }> = [];
+
+  for (let index = 0; index < leadingBlanks; index += 1) {
+    cells.push({
+      key: `blank-${index}`,
+      label: "",
+      date: null,
+      isWorkday: true,
+    });
+  }
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const date = toCalendarDate(year, month, day);
+    const baseValue = dayMap.get(date) ?? defaultWorkdayForDate(year, month, day);
+    cells.push({
+      key: date,
+      label: String(day),
+      date,
+      isWorkday: isEditing ? (draft[date] ?? baseValue) : baseValue,
+    });
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push({
+      key: `tail-${cells.length}`,
+      label: "",
+      date: null,
+      isWorkday: true,
+    });
+  }
+
+  return cells;
 }
 
 function nextWeekdays() {
@@ -447,6 +524,14 @@ export default function App() {
   const [monthlyBillingLogs, setMonthlyBillingLogs] = useState<MonthlyBillingLog[]>([]);
   const [employeeOrderReports, setEmployeeOrderReports] = useState<EmployeeOrderReport[]>([]);
   const [hasLoadedEmployeeOrderReports, setHasLoadedEmployeeOrderReports] = useState(false);
+  const [workCalendarYear, setWorkCalendarYear] = useState(() => new Date().getFullYear());
+  const [workCalendarMonth, setWorkCalendarMonth] = useState(() => new Date().getMonth() + 1);
+  const [workCalendarDays, setWorkCalendarDays] = useState<WorkCalendarDay[]>([]);
+  const [workCalendarDraft, setWorkCalendarDraft] = useState<Record<string, boolean>>({});
+  const [isWorkCalendarEditing, setIsWorkCalendarEditing] = useState(false);
+  const [hasLoadedWorkCalendar, setHasLoadedWorkCalendar] = useState(false);
+  const [workCalendarImportFile, setWorkCalendarImportFile] = useState<File | null>(null);
+  const [workCalendarImportPreview, setWorkCalendarImportPreview] = useState<WorkCalendarDay[]>([]);
   const [csvImportFiles, setCsvImportFiles] = useState<Partial<Record<CsvImportType, File | null>>>({});
   const [csvImportResults, setCsvImportResults] = useState<Partial<Record<CsvImportType, CsvImportRow[]>>>({});
   const [csvImportErrors, setCsvImportErrors] = useState<Partial<Record<CsvImportType, CsvImportErrorData | null>>>({});
@@ -541,6 +626,12 @@ export default function App() {
     setMonthlyBillingLogs([]);
     setEmployeeOrderReports([]);
     setHasLoadedEmployeeOrderReports(false);
+    setWorkCalendarDays([]);
+    setWorkCalendarDraft({});
+    setIsWorkCalendarEditing(false);
+    setHasLoadedWorkCalendar(false);
+    setWorkCalendarImportFile(null);
+    setWorkCalendarImportPreview([]);
     setSelectedSupplier(null);
     setDeadlineMessage("");
     setCsvImportFiles({});
@@ -679,6 +770,36 @@ export default function App() {
       return;
     }
 
+    if (activeTab !== "admin-calendar") {
+      return;
+    }
+
+    void loadWorkCalendarData(session.token, workCalendarYear, workCalendarMonth);
+  }, [activeTab, session, workCalendarMonth, workCalendarYear]);
+
+  useEffect(() => {
+    if (session?.role !== "admin") {
+      setWorkCalendarDays([]);
+      setWorkCalendarDraft({});
+      setIsWorkCalendarEditing(false);
+      setHasLoadedWorkCalendar(false);
+      setWorkCalendarImportFile(null);
+      setWorkCalendarImportPreview([]);
+      return;
+    }
+
+    if (activeTab !== "admin-calendar") {
+      setIsWorkCalendarEditing(false);
+      setWorkCalendarImportPreview([]);
+      return;
+    }
+  }, [activeTab, session]);
+
+  useEffect(() => {
+    if (session?.role !== "admin") {
+      return;
+    }
+
     const availableMenus = menus.filter(
       (menu) =>
         menu.validFrom <= adminOrderForm.orderDate && adminOrderForm.orderDate <= menu.validTo,
@@ -743,6 +864,8 @@ export default function App() {
   useEffect(() => {
     setActiveTab(defaultTabForRole(session?.role ?? "employee"));
     setAdminSupplierTab("supplier-directory");
+    setIsWorkCalendarEditing(false);
+    setWorkCalendarImportPreview([]);
   }, [session]);
 
   useEffect(() => {
@@ -945,6 +1068,20 @@ export default function App() {
       );
     } catch (unknownError) {
       handleHttpError(unknownError, "管理資料讀取失敗");
+    }
+  }
+
+  async function loadWorkCalendarData(token: string, year: number, month: number) {
+    try {
+      const response = await getWorkCalendar(token, year, month);
+      setWorkCalendarDays(response.data);
+      setWorkCalendarDraft(buildWorkCalendarDraft(response.data));
+      setHasLoadedWorkCalendar(true);
+    } catch (unknownError) {
+      setWorkCalendarDays([]);
+      setWorkCalendarDraft({});
+      setHasLoadedWorkCalendar(false);
+      handleHttpError(unknownError, "行事曆讀取失敗");
     }
   }
 
@@ -1668,6 +1805,161 @@ export default function App() {
     }
   }
 
+  function changeWorkCalendarYear(nextYear: number) {
+    if (Number.isNaN(nextYear)) {
+      return;
+    }
+    if (isWorkCalendarEditing && hasWorkCalendarChanges(workCalendarDays, workCalendarDraft)) {
+      openWarningBox("尚有修改未更新，請先按更新");
+      return;
+    }
+    setIsWorkCalendarEditing(false);
+    setWorkCalendarYear(nextYear);
+  }
+
+  function changeWorkCalendarMonth(nextMonth: number) {
+    if (nextMonth < 1 || nextMonth > 12) {
+      return;
+    }
+    if (isWorkCalendarEditing && hasWorkCalendarChanges(workCalendarDays, workCalendarDraft)) {
+      openWarningBox("尚有修改未更新，請先按更新");
+      return;
+    }
+    setIsWorkCalendarEditing(false);
+    setWorkCalendarMonth(nextMonth);
+  }
+
+  function beginWorkCalendarEditing() {
+    if (!workCalendarDays.length) {
+      openWarningBox("請先載入當月行事曆資料。");
+      return;
+    }
+    setWorkCalendarDraft(buildWorkCalendarDraft(workCalendarDays));
+    setIsWorkCalendarEditing(true);
+  }
+
+  function toggleWorkCalendarDay(date: string) {
+    if (!isWorkCalendarEditing) {
+      return;
+    }
+    setWorkCalendarDraft((current) => ({
+      ...current,
+      [date]: !current[date],
+    }));
+  }
+
+  async function submitWorkCalendarUpdate() {
+    if (!session) {
+      return;
+    }
+    if (!isWorkCalendarEditing) {
+      openWarningBox("請先進入編輯模式。");
+      return;
+    }
+    if (!hasWorkCalendarChanges(workCalendarDays, workCalendarDraft)) {
+      openWarningBox("目前沒有需要更新的變更。");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await updateWorkCalendar(
+        session.token,
+        workCalendarDays.map((day) => ({
+          date: day.date,
+          isWorkday: workCalendarDraft[day.date] ?? day.isWorkday,
+        })),
+      );
+      setIsWorkCalendarEditing(false);
+      await loadWorkCalendarData(session.token, workCalendarYear, workCalendarMonth);
+      openSuccessBox("當月行事曆異動已更新。", "更新完成");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "更新行事曆失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function confirmGenerateCurrentYearCalendar() {
+    if (!session) {
+      return;
+    }
+
+    openConfirmBox(
+      `${workCalendarYear} 年的行事曆資料將被整年覆蓋，是否繼續？`,
+      async () => {
+        setLoading(true);
+        try {
+          await generateWorkCalendar(session.token, workCalendarYear);
+          setIsWorkCalendarEditing(false);
+          setWorkCalendarImportPreview([]);
+          await loadWorkCalendarData(session.token, workCalendarYear, workCalendarMonth);
+          openSuccessBox(`${workCalendarYear} 年行事曆已重新預產。`, "預產完成");
+        } catch (unknownError) {
+          handleHttpError(unknownError, "預產行事曆失敗");
+        } finally {
+          setLoading(false);
+        }
+      },
+      "預產行事曆",
+    );
+  }
+
+  async function previewWorkCalendarImport() {
+    if (!session) {
+      return;
+    }
+    if (!workCalendarImportFile) {
+      openWarningBox("請先選擇 CSV 檔案。");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await importWorkCalendar(session.token, workCalendarImportFile, false);
+      setWorkCalendarImportPreview(response.data);
+      openSuccessBox(`CSV 預覽完成，共 ${response.data.length} 筆。`, "預覽完成");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "行事曆 CSV 預覽失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function confirmWorkCalendarImport() {
+    if (!session) {
+      return;
+    }
+    if (!workCalendarImportFile) {
+      openWarningBox("請先選擇 CSV 檔案。");
+      return;
+    }
+    if (!workCalendarImportPreview.length) {
+      openWarningBox("請先預覽 CSV 內容，再確認匯入。");
+      return;
+    }
+
+    openConfirmBox(
+      "確定要依預覽結果更新行事曆資料嗎？",
+      async () => {
+        setLoading(true);
+        try {
+          const response = await importWorkCalendar(session.token, workCalendarImportFile, true);
+          setWorkCalendarImportPreview(response.data);
+          setWorkCalendarImportFile(null);
+          setIsWorkCalendarEditing(false);
+          await loadWorkCalendarData(session.token, workCalendarYear, workCalendarMonth);
+          openSuccessBox(`行事曆 CSV 匯入成功，共 ${response.data.length} 筆。`, "匯入完成");
+        } catch (unknownError) {
+          handleHttpError(unknownError, "行事曆 CSV 匯入失敗");
+        } finally {
+          setLoading(false);
+        }
+      },
+      "確認匯入",
+    );
+  }
+
   async function submitCreateMenu() {
     if (!session) {
       return;
@@ -1853,7 +2145,7 @@ export default function App() {
 
   const introText = session
     ? session.role === "admin"
-      ? "管理員登入後會直接進入訂單管理 TAB，並可切換供應商管理、報表設定、CSV 匯入與系統設定。"
+      ? "管理員登入後會直接進入訂單管理 TAB，並可切換供應商管理、報表設定、員工管理、部門管理、行事曆設定、CSV 匯入與系統設定。"
       : "員工登入後會直接進入訂便當 TAB，並可切換到「我的訂單」查看訂單或切到「修改密碼」。"
     : "登入成功後，系統會依帳號角色直接導向對應的 TAB 主頁，不再顯示員工入口或管理員入口選擇頁。";
 
@@ -1863,6 +2155,14 @@ export default function App() {
   const availableAdminMenus = menus.filter(
     (menu) => menu.validFrom <= adminOrderForm.orderDate && adminOrderForm.orderDate <= menu.validTo,
   );
+  const workCalendarCells = buildWorkCalendarCells(
+    workCalendarYear,
+    workCalendarMonth,
+    workCalendarDays,
+    workCalendarDraft,
+    isWorkCalendarEditing,
+  );
+  const hasUnsavedWorkCalendarChanges = hasWorkCalendarChanges(workCalendarDays, workCalendarDraft);
 
   return (
     <main className="min-h-screen px-4 py-6 text-ink sm:px-6 lg:px-10">
@@ -2195,7 +2495,7 @@ export default function App() {
                   <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Admin Console</p>
                   <h2 className="mt-3 text-2xl font-semibold">{session.name}</h2>
                   <p className="mt-2 text-sm text-ink/65">
-                    這裡可以依 TAB 切換訂單管理、供應商管理、報表設定、CSV 匯入與系統設定，不重新整理整頁。
+                    這裡可以依 TAB 切換訂單管理、供應商管理、報表設定、員工管理、部門管理、行事曆設定、CSV 匯入與系統設定，不重新整理整頁。
                   </p>
                 </div>
                 <button
@@ -3120,6 +3420,223 @@ export default function App() {
                         </article>
                       </div>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {activeTab === "admin-calendar" ? (
+                  <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-white p-6">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.35em] text-pine/70">Work Calendar</p>
+                          <h3 className="mt-3 text-xl font-semibold">行事曆設定</h3>
+                          <p className="mt-2 text-sm leading-7 text-ink/65">
+                            以月份檢視上班日設定。非上班日會以紅色標註，編輯模式下可直接點日期切換狀態。
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                          {workCalendarYear} / {padMonthDay(workCalendarMonth)}
+                        </span>
+                      </div>
+
+                      <div className="mt-6 grid gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,10rem)_1fr]">
+                        <label className="grid gap-2 text-sm text-ink/70">
+                          年份
+                          <input
+                            className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                            type="number"
+                            min={2000}
+                            max={2100}
+                            value={workCalendarYear}
+                            onChange={(event) => changeWorkCalendarYear(Number(event.target.value))}
+                          />
+                        </label>
+                        <label className="grid gap-2 text-sm text-ink/70">
+                          月份
+                          <select
+                            className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 outline-none transition focus:border-pine"
+                            value={workCalendarMonth}
+                            onChange={(event) => changeWorkCalendarMonth(Number(event.target.value))}
+                          >
+                            {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                              <option key={month} value={month}>
+                                {month} 月
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="flex flex-wrap items-end gap-3">
+                          <button
+                            className="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={confirmGenerateCurrentYearCalendar}
+                            type="button"
+                            disabled={loading}
+                          >
+                            預產行事曆
+                          </button>
+                          {!isWorkCalendarEditing ? (
+                            <button
+                              className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={beginWorkCalendarEditing}
+                              type="button"
+                              disabled={loading || !workCalendarDays.length}
+                            >
+                              編輯
+                            </button>
+                          ) : (
+                            <button
+                              className="rounded-full bg-pine px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => void submitWorkCalendarUpdate()}
+                              type="button"
+                              disabled={loading}
+                            >
+                              更新
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {isWorkCalendarEditing && hasUnsavedWorkCalendarChanges ? (
+                        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                          尚有修改未更新，請先按更新。
+                        </div>
+                      ) : null}
+
+                      <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-ink/10 bg-[#fcfbf7] p-4">
+                        <div className="mb-4 flex items-center justify-between gap-3">
+                          <h4 className="text-lg font-semibold text-ink">
+                            {workCalendarYear} 年 {workCalendarMonth} 月
+                          </h4>
+                          <p className="text-sm text-ink/55">
+                            {isWorkCalendarEditing ? "編輯模式" : "唯讀模式"}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-7 gap-2">
+                          {CALENDAR_WEEKDAY_LABELS.map((label) => (
+                            <div key={label} className="px-2 py-2 text-center text-xs font-semibold text-ink/45">
+                              {label}
+                            </div>
+                          ))}
+                          {workCalendarCells.map((cell) =>
+                            cell.date ? (
+                              <button
+                                key={cell.key}
+                                className={`min-h-20 rounded-2xl border px-2 py-3 text-left transition ${
+                                  cell.isWorkday
+                                    ? "border-ink/10 bg-white text-ink hover:border-pine/50"
+                                    : "border-red-200 bg-red-50 text-red-700 hover:border-red-400"
+                                } ${isWorkCalendarEditing ? "cursor-pointer" : "cursor-default"}`}
+                                onClick={() => toggleWorkCalendarDay(cell.date as string)}
+                                type="button"
+                                disabled={!isWorkCalendarEditing}
+                              >
+                                <p className="text-sm font-semibold">{cell.label}</p>
+                                <p className="mt-2 text-xs">
+                                  {cell.isWorkday ? "上班日" : "非上班日"}
+                                </p>
+                              </button>
+                            ) : (
+                              <div
+                                key={cell.key}
+                                className="min-h-20 rounded-2xl border border-dashed border-ink/5 bg-transparent"
+                              />
+                            ),
+                          )}
+                        </div>
+                        {!workCalendarCells.length && hasLoadedWorkCalendar ? (
+                          <div className="rounded-2xl bg-white px-4 py-4 text-sm text-ink/60">
+                            目前沒有行事曆資料
+                          </div>
+                        ) : null}
+                        {!hasLoadedWorkCalendar ? (
+                          <div className="mt-4 rounded-2xl bg-white px-4 py-4 text-sm text-ink/60">
+                            請選擇年月以載入行事曆資料
+                          </div>
+                        ) : null}
+                      </div>
+                    </article>
+
+                    <article className="rounded-[1.75rem] border border-ink/10 bg-[#f1e8db]/80 p-6">
+                      <div className="space-y-8">
+                        <section className="space-y-4 rounded-[1.5rem] border border-ink/10 bg-white p-5">
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.35em] text-clay/80">CSV Import</p>
+                            <h3 className="mt-3 text-xl font-semibold">CSV 匯入行事曆</h3>
+                            <p className="mt-2 text-sm leading-7 text-ink/65">
+                              每行格式為 `yyyymmdd,y/n`。先預覽，再確認匯入。
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-3 text-sm text-ink/75">
+                            範例：`20260401,y`
+                          </div>
+                          <input
+                            className="block w-full text-sm text-ink/70"
+                            type="file"
+                            accept=".csv,text/csv"
+                            onChange={(event) => {
+                              setWorkCalendarImportFile(event.target.files?.item(0) ?? null);
+                              setWorkCalendarImportPreview([]);
+                            }}
+                          />
+                          <div className="flex flex-wrap gap-3">
+                            <button
+                              className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => void previewWorkCalendarImport()}
+                              type="button"
+                              disabled={loading}
+                            >
+                              預覽 CSV
+                            </button>
+                            <button
+                              className="rounded-full border border-ink/10 bg-white px-5 py-3 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={confirmWorkCalendarImport}
+                              type="button"
+                              disabled={loading || !workCalendarImportPreview.length}
+                            >
+                              確認匯入
+                            </button>
+                          </div>
+                        </section>
+
+                        <section className="space-y-4 rounded-[1.5rem] border border-ink/10 bg-white p-5">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm uppercase tracking-[0.35em] text-clay/80">Preview</p>
+                              <h3 className="mt-3 text-xl font-semibold">CSV 預覽</h3>
+                            </div>
+                            <span className="rounded-full bg-[#f3efe7] px-4 py-2 text-sm text-ink/65">
+                              {workCalendarImportPreview.length} 筆
+                            </span>
+                          </div>
+                          {workCalendarImportPreview.length ? (
+                            <div className="max-h-[28rem] overflow-auto rounded-2xl border border-ink/10 bg-[#fcfbf7]">
+                              <table className="min-w-full text-left text-sm text-ink/75">
+                                <thead className="sticky top-0 bg-white text-ink/55">
+                                  <tr className="border-b border-ink/10">
+                                    <th className="px-4 py-3 font-medium">日期</th>
+                                    <th className="px-4 py-3 font-medium">狀態</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {workCalendarImportPreview.map((day) => (
+                                    <tr key={day.date} className="border-b border-ink/5">
+                                      <td className="px-4 py-3">{formatDate(day.date)}</td>
+                                      <td className={`px-4 py-3 ${day.isWorkday ? "text-ink" : "text-red-700"}`}>
+                                        {day.isWorkday ? "上班日" : "非上班日"}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="rounded-2xl border border-ink/10 bg-[#fcfbf7] px-4 py-4 text-sm text-ink/60">
+                              選擇 CSV 後先按「預覽 CSV」，確認內容無誤再匯入。
+                            </div>
+                          )}
+                        </section>
+                      </div>
+                    </article>
                   </div>
                 ) : null}
 

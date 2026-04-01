@@ -17,6 +17,7 @@ import type {
   ReportEmail,
   SessionUser,
   Supplier,
+  WorkCalendarDay,
 } from "./types";
 
 interface ApiEnvelope<T> {
@@ -671,4 +672,43 @@ export async function downloadEmployeeOrderReportPdf(
     responseType: "blob",
   });
   return response.data;
+}
+
+export function getWorkCalendar(token: string, year: number, month: number) {
+  return unwrap<WorkCalendarDay[]>(api.get("/admin/calendar", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    params: {
+      year,
+      month,
+    },
+  }));
+}
+
+export function updateWorkCalendar(token: string, days: WorkCalendarDay[]) {
+  return unwrap<void>(api.put("/admin/calendar", days, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }));
+}
+
+export function generateWorkCalendar(token: string, year: number) {
+  return unwrap<void>(api.post("/admin/calendar/generate", { year }, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }));
+}
+
+export function importWorkCalendar(token: string, file: File, confirm: boolean) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("confirm", String(confirm));
+  return unwrap<WorkCalendarDay[]>(api.post("/admin/calendar/import", formData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }));
 }
