@@ -6,6 +6,7 @@ public record EmployeeMenuOptionResponse(
         Long id,
         String name,
         String category,
+        String supplierName,
         String description,
         LocalDate validFrom,
         LocalDate validTo) {}

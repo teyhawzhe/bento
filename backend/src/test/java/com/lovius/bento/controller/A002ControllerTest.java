@@ -6,12 +6,14 @@ import com.lovius.bento.dto.CreateAdminOrderRequest;
 import com.lovius.bento.dto.EmployeeMenuOptionResponse;
 import com.lovius.bento.dto.OrderResponse;
 import com.lovius.bento.dto.SupplierResponse;
+import com.lovius.bento.dto.WorkCalendarDayDto;
 import com.lovius.bento.exception.GlobalExceptionHandler;
 import com.lovius.bento.security.AuthenticatedUser;
 import com.lovius.bento.service.MenuService;
 import com.lovius.bento.service.OrderService;
 import com.lovius.bento.service.SupplierService;
 import com.lovius.bento.service.TokenService;
+import com.lovius.bento.service.WorkCalendarService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -45,6 +47,27 @@ class A002ControllerTest {
     @MockBean
     private TokenService tokenService;
 
+    @MockBean
+    private WorkCalendarService workCalendarService;
+
+    @Test
+    void getEmployeeCalendarReturnsMonthDays() throws Exception {
+        Mockito.when(tokenService.parseToken("Bearer employee-token"))
+                .thenReturn(new AuthenticatedUser(2L, "alice", "employee"));
+        Mockito.when(workCalendarService.getCalendar(2026, 4)).thenReturn(List.of(
+                new WorkCalendarDayDto(LocalDate.of(2026, 4, 1), true),
+                new WorkCalendarDayDto(LocalDate.of(2026, 4, 2), false)));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/calendar")
+                        .header("Authorization", "Bearer employee-token")
+                        .param("year", "2026")
+                        .param("month", "4"))
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].date").value("2026-04-01"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].is_workday").value(true))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[1].is_workday").value(false));
+    }
+
     @Test
     void getEmployeeMenusReturnsOrderableDatesAndMenus() throws Exception {
         Mockito.when(tokenService.parseToken("Bearer employee-token"))
@@ -54,6 +77,7 @@ class A002ControllerTest {
                         20L,
                         "香烤雞腿便當",
                         "肉類",
+                        "好好店家",
                         "附三樣配菜",
                         LocalDate.of(2026, 3, 24),
                         LocalDate.of(2026, 3, 31))));
@@ -61,7 +85,8 @@ class A002ControllerTest {
         mockMvc.perform(MockMvcRequestBuilders.get("/api/orders/menu")
                         .header("Authorization", "Bearer employee-token"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].name").value("香烤雞腿便當"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].name").value("香烤雞腿便當"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data[0].supplier_name").value("好好店家"));
     }
 
     @Test

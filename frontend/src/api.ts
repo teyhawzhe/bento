@@ -356,6 +356,18 @@ export function getEmployeeMenus(token: string) {
   }));
 }
 
+export function getEmployeeCalendar(token: string, year: number, month: number) {
+  return unwrap<WorkCalendarDay[]>(api.get("/calendar", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    params: {
+      year,
+      month,
+    },
+  }));
+}
+
 export function getMyOrders(token: string) {
   return unwrap<Order[]>(api.get("/orders/me", {
     headers: {

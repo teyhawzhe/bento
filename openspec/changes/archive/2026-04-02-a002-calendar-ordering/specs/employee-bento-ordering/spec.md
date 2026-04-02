@@ -1,7 +1,5 @@
-## Purpose
-定義員工查詢可訂菜單、建立訂單與查詢個人訂單時，需符合的 OpenAPI 契約與欄位限制。
+## MODIFIED Requirements
 
-## Requirements
 ### Requirement: 員工訂餐 API 必須符合 OpenAPI 回應契約且維持不顯示價格
 系統 SHALL 讓 `/api/orders/menu`、`/api/orders`、`/api/orders/{id}` 與 `/api/orders/me` 的成功回應符合 `status/data` 契約。員工端菜單資料 MUST 不包含價格欄位，即使管理員端與資料庫內保留價格資訊；`GET /api/orders/menu` 的每筆便當資料 MUST 額外提供 `supplier_name`，供員工端行事曆互動視窗顯示「便當名稱 / 種類 / 廠商名稱」格式。
 

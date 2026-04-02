@@ -132,6 +132,7 @@ export interface EmployeeMenuOption {
   id: number;
   name: string;
   category: string;
+  supplierName: string;
   description: string;
   validFrom: string;
   validTo: string;

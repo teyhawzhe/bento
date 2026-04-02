@@ -109,10 +109,14 @@ public class MenuService {
     }
 
     public EmployeeMenuOptionResponse toEmployeeResponse(Menu menu) {
+        String supplierName = supplierRepository.findById(menu.getSupplierId())
+                .map(supplier -> supplier.getName())
+                .orElse("未知供應商");
         return new EmployeeMenuOptionResponse(
                 menu.getId(),
                 menu.getName(),
                 menu.getCategory(),
+                supplierName,
                 menu.getDescription(),
                 menu.getValidFrom(),
                 menu.getValidTo());

@@ -1,6 +1,11 @@
 ﻿import { useEffect, useState, type ReactNode } from "react";
 import axios from "axios";
-import { buildAdminOrders, employeeMenusForDate, employeeOrderableDatesFor } from "./app-utils";
+import {
+  buildAdminOrders,
+  buildEmployeeCalendarCells,
+  employeeMenusForDate,
+  employeeOrderableDatesFor,
+} from "./app-utils";
 import {
   cancelAdminOrder,
   cancelOrder,
@@ -21,6 +26,7 @@ import {
   downloadEmployeeOrderReportPdf,
   downloadImportTemplate,
   forgotPassword,
+  getEmployeeCalendar,
   getEmployeeOrderReports,
   getAdminOrders,
   getMenuCheckNotification,
@@ -192,6 +198,11 @@ interface EmployeeEditForm {
   email: string;
   departmentId: string;
   isAdmin: boolean;
+}
+
+interface EmployeeCalendarDialogState {
+  isOpen: boolean;
+  date: string;
 }
 
 function readSession(): SessionUser | null {
@@ -372,6 +383,14 @@ function nextWeekdays() {
   return days;
 }
 
+function shiftMonth(year: number, month: number, offset: number) {
+  const base = new Date(year, month - 1 + offset, 1);
+  return {
+    year: base.getFullYear(),
+    month: base.getMonth() + 1,
+  };
+}
+
 function employeeOrderCancellationDeadline(orderDate: string) {
   const cutoff = new Date(`${orderDate}T16:30:00`);
   cutoff.setDate(cutoff.getDate() - 1);
@@ -530,6 +549,10 @@ export default function App() {
   const [employeeMenus, setEmployeeMenus] = useState<EmployeeMenuOption[]>([]);
   const [employeeOrderDates, setEmployeeOrderDates] = useState<string[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [employeeCalendarYear, setEmployeeCalendarYear] = useState(() => new Date().getFullYear());
+  const [employeeCalendarMonth, setEmployeeCalendarMonth] = useState(() => new Date().getMonth() + 1);
+  const [employeeCalendarDays, setEmployeeCalendarDays] = useState<WorkCalendarDay[]>([]);
+  const [hasLoadedEmployeeCalendar, setHasLoadedEmployeeCalendar] = useState(false);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [employeeDepartmentFilter, setEmployeeDepartmentFilter] = useState("");
@@ -576,6 +599,10 @@ export default function App() {
   const [orderForm, setOrderForm] = useState({
     orderDate: "",
     menuId: "",
+  });
+  const [employeeCalendarDialog, setEmployeeCalendarDialog] = useState<EmployeeCalendarDialogState>({
+    isOpen: false,
+    date: "",
   });
   const [supplierForm, setSupplierForm] = useState({
     name: "",
@@ -635,6 +662,10 @@ export default function App() {
     setEmployeeMenus([]);
     setOrders([]);
     setEmployeeOrderDates([]);
+    setEmployeeCalendarYear(new Date().getFullYear());
+    setEmployeeCalendarMonth(new Date().getMonth() + 1);
+    setEmployeeCalendarDays([]);
+    setHasLoadedEmployeeCalendar(false);
     setMenus([]);
     setDepartments([]);
     setEmployeeDepartmentFilter("");
@@ -662,6 +693,7 @@ export default function App() {
     setCsvImportResults({});
     setCsvImportErrors({});
     setActiveTab(defaultTabForRole("employee"));
+    setEmployeeCalendarDialog({ isOpen: false, date: "" });
   }
 
   function applySession(nextSession: SessionUser | null) {
@@ -689,12 +721,12 @@ export default function App() {
     }
 
     if (session.role === "employee") {
-      void loadEmployeeData(session.token);
+      void loadEmployeeData(session.token, employeeCalendarYear, employeeCalendarMonth);
       return;
     }
 
     void loadAdminData(session.token, adminOrderFilters, supplierFilters, employeeDepartmentFilter);
-  }, [adminOrderFilters, employeeDepartmentFilter, session, supplierFilters]);
+  }, [adminOrderFilters, employeeCalendarMonth, employeeCalendarYear, employeeDepartmentFilter, session, supplierFilters]);
 
   useEffect(() => {
     const sessionKey = menuCheckSessionKeyFor(session);
@@ -873,13 +905,17 @@ export default function App() {
 
   useEffect(() => {
     if (session?.role !== "employee") {
+      setEmployeeCalendarDays([]);
+      setHasLoadedEmployeeCalendar(false);
+      setEmployeeCalendarDialog({ isOpen: false, date: "" });
       return;
     }
 
     setOrderForm((current) => {
-      const nextOrderDate = employeeOrderDates.includes(current.orderDate)
-        ? current.orderDate
-        : (employeeOrderDates[0] ?? "");
+      const preferredDate = employeeCalendarDialog.date || current.orderDate;
+      const nextOrderDate = employeeOrderDates.includes(preferredDate)
+        ? preferredDate
+        : (employeeOrderDates[0] ?? current.orderDate ?? "");
       const availableMenus = employeeMenusForDate(employeeMenus, nextOrderDate);
       const existingOrder = orders.find((entry) => entry.orderDate === nextOrderDate);
       const preferredMenuId = existingOrder
@@ -900,7 +936,7 @@ export default function App() {
         menuId: nextMenuId,
       };
     });
-  }, [employeeMenus, employeeOrderDates, orders, session]);
+  }, [employeeCalendarDialog.date, employeeMenus, employeeOrderDates, orders, session]);
 
   useEffect(() => {
     setActiveTab(defaultTabForRole(session?.role ?? "employee"));
@@ -1010,22 +1046,21 @@ export default function App() {
     return false;
   }
 
-  async function loadEmployeeData(token: string) {
-    let nextOrders: Order[] = [];
+  async function loadEmployeeData(token: string, year: number, month: number) {
     try {
-      const [ordersResponse] = await Promise.all([getMyOrders(token)]);
-      nextOrders = ordersResponse.data;
-      setOrders(nextOrders);
-    } catch (unknownError) {
-      handleHttpError(unknownError, "訂餐記錄讀取失敗");
-    }
-
-    try {
-      const response = await getEmployeeMenus(token);
-      const nextMenus = response.data;
+      const [ordersResponse, menusResponse, calendarResponse] = await Promise.all([
+        getMyOrders(token),
+        getEmployeeMenus(token),
+        getEmployeeCalendar(token, year, month),
+      ]);
+      const nextOrders = ordersResponse.data;
+      const nextMenus = menusResponse.data;
       const nextOrderableDates = employeeOrderableDatesFor(nextMenus, new Date());
+      setOrders(nextOrders);
       setEmployeeMenus(nextMenus);
       setEmployeeOrderDates(nextOrderableDates);
+      setEmployeeCalendarDays(calendarResponse.data);
+      setHasLoadedEmployeeCalendar(true);
       setDeadlineMessage(
         nextOrderableDates.length
           ? ""
@@ -1034,7 +1069,9 @@ export default function App() {
       setOrderForm((current) => {
         const nextOrderDate = nextOrderableDates.includes(current.orderDate)
           ? current.orderDate
-          : (nextOrderableDates[0] ?? "");
+          : employeeCalendarDialog.date && nextOrderableDates.includes(employeeCalendarDialog.date)
+            ? employeeCalendarDialog.date
+            : (nextOrderableDates[0] ?? current.orderDate ?? "");
         const availableMenus = employeeMenusForDate(nextMenus, nextOrderDate);
         const existingOrder = nextOrders.find((entry) => entry.orderDate === nextOrderDate);
         const preferredMenuId = existingOrder
@@ -1051,8 +1088,11 @@ export default function App() {
         };
       });
     } catch (unknownError) {
+      setOrders([]);
       setEmployeeMenus([]);
       setEmployeeOrderDates([]);
+      setEmployeeCalendarDays([]);
+      setHasLoadedEmployeeCalendar(false);
       if (axios.isAxiosError(unknownError)) {
         setDeadlineMessage(unknownError.response?.data?.message ?? "可訂日期讀取失敗");
       } else {
@@ -1204,7 +1244,7 @@ export default function App() {
       setMenuCheckCheckedFor(menuCheckSessionKey);
       setActiveTab(defaultTabForRole(nextSession.role));
       if (nextSession.role === "employee") {
-        await loadEmployeeData(nextSession.token);
+        await loadEmployeeData(nextSession.token, employeeCalendarYear, employeeCalendarMonth);
       } else {
         await loadAdminData(nextSession.token, adminOrderFilters, supplierFilters);
         const hasMenuCheckReminder = await loadAdminMenuCheckNotification(nextSession.token);
@@ -1574,7 +1614,8 @@ export default function App() {
         });
         openSuccessBox("訂餐成功。", "送出完成");
       }
-      await loadEmployeeData(session.token);
+      setEmployeeCalendarDialog({ isOpen: false, date: "" });
+      await loadEmployeeData(session.token, employeeCalendarYear, employeeCalendarMonth);
     } catch (unknownError) {
       handleHttpError(unknownError, "訂餐失敗");
     } finally {
@@ -1593,7 +1634,8 @@ export default function App() {
     setLoading(true);
     try {
       await cancelOrder(session.token, orderId);
-      await loadEmployeeData(session.token);
+      setEmployeeCalendarDialog({ isOpen: false, date: "" });
+      await loadEmployeeData(session.token, employeeCalendarYear, employeeCalendarMonth);
       openSuccessBox("訂餐已取消。", "訂單已取消");
     } catch (unknownError) {
       handleHttpError(unknownError, "取消訂餐失敗");
@@ -2181,6 +2223,42 @@ export default function App() {
     );
   }
 
+  function openEmployeeCalendarDialog(date: string) {
+    const existingOrder = orders.find((entry) => entry.orderDate === date);
+    const availableMenus = employeeMenusForDate(employeeMenus, date);
+    setOrderForm({
+      orderDate: date,
+      menuId: existingOrder
+        ? String(existingOrder.menuId)
+        : availableMenus[0]
+          ? String(availableMenus[0].id)
+          : "",
+    });
+    setEmployeeCalendarDialog({
+      isOpen: true,
+      date,
+    });
+  }
+
+  function closeEmployeeCalendarDialog() {
+    setEmployeeCalendarDialog({
+      isOpen: false,
+      date: "",
+    });
+  }
+
+  function confirmSubmitEmployeeCalendarOrder() {
+    const existingOrder = orders.find((entry) => entry.orderDate === orderForm.orderDate);
+    if (!existingOrder) {
+      return;
+    }
+    openConfirmBox(
+      "確定要修改這筆訂單嗎？",
+      async () => submitOrder(),
+      "修改訂單",
+    );
+  }
+
   function confirmCancelAdminOrder(orderId: number, orderDate: string) {
     if (!canCancelAdminOrder(orderDate, currentTime)) {
       openErrorBox("已超過管理員取消訂餐截止時間");
@@ -2239,8 +2317,19 @@ export default function App() {
     : "登入成功後，系統會依帳號角色直接導向對應的 TAB 主頁，不再顯示員工入口或管理員入口選擇頁。";
 
   const currentTabs = session ? tabsForRole(session.role) : [];
-  const selectedOrder = orders.find((entry) => entry.orderDate === orderForm.orderDate);
-  const availableEmployeeMenus = employeeMenusForDate(employeeMenus, orderForm.orderDate);
+  const employeeCalendarCells = buildEmployeeCalendarCells(
+    employeeCalendarYear,
+    employeeCalendarMonth,
+    employeeCalendarDays,
+    employeeOrderDates,
+    orders,
+  );
+  const employeeCalendarOrder = employeeCalendarDialog.date
+    ? orders.find((entry) => entry.orderDate === employeeCalendarDialog.date) ?? null
+    : null;
+  const employeeCalendarMenus = employeeMenusForDate(employeeMenus, employeeCalendarDialog.date);
+  const employeeCalendarCanModify =
+    !!employeeCalendarOrder && employeeOrderDates.includes(employeeCalendarDialog.date);
   const availableAdminMenus = menus.filter(
     (menu) => menu.validFrom <= adminOrderForm.orderDate && adminOrderForm.orderDate <= menu.validTo,
   );
@@ -2415,65 +2504,111 @@ export default function App() {
                         <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
                           {deadlineMessage}
                         </div>
-                      ) : (
-                        <>
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <label className="grid gap-2 text-sm text-ink/70">
-                              訂餐日期
-                              <select
-                                className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                                value={orderForm.orderDate}
-                                onChange={(event) =>
-                                  setOrderForm((current) => ({ ...current, orderDate: event.target.value }))
-                                }
+                      ) : null}
+                      <>
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm text-ink/60">以月行事曆查看非上班日、可訂日期與已訂便當狀態</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                className="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm"
+                                onClick={() => {
+                                  const previous = shiftMonth(employeeCalendarYear, employeeCalendarMonth, -1);
+                                  setEmployeeCalendarYear(previous.year);
+                                  setEmployeeCalendarMonth(previous.month);
+                                }}
+                                type="button"
                               >
-                                {employeeOrderDates.map((day) => (
-                                  <option key={day} value={day}>
-                                    {formatDateWithWeekday(day)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="grid gap-2 text-sm text-ink/70">
-                              便當選項
-                              <select
-                                className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
-                                value={orderForm.menuId}
-                                onChange={(event) =>
-                                  setOrderForm((current) => ({ ...current, menuId: event.target.value }))
-                                }
+                                上個月
+                              </button>
+                              <div className="rounded-full bg-white px-4 py-2 text-sm font-medium text-ink">
+                                {employeeCalendarYear} 年 {employeeCalendarMonth} 月
+                              </div>
+                              <button
+                                className="rounded-full border border-ink/10 bg-white px-4 py-2 text-sm"
+                                onClick={() => {
+                                  const next = shiftMonth(employeeCalendarYear, employeeCalendarMonth, 1);
+                                  setEmployeeCalendarYear(next.year);
+                                  setEmployeeCalendarMonth(next.month);
+                                }}
+                                type="button"
                               >
-                                {availableEmployeeMenus.map((menu) => (
-                                  <option key={menu.id} value={menu.id}>
-                                    {menu.name} / {menu.category}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
+                                下個月
+                              </button>
+                            </div>
                           </div>
                           <div className="rounded-[1.5rem] bg-[#171717] p-5 text-sm leading-7 text-white/80">
-                            員工端不顯示價格資訊。可訂日期為本次星期五 12:00 截止後一天起到下一個星期五，週末若有設定菜單也可訂；若同一天已經下單，送出後會以最新選擇覆蓋舊訂單。
+                            員工端不顯示價格資訊。上班日空白日期可點擊訂餐，已有訂單日期可點擊修改或取消；非上班日不可互動。可訂日期仍遵守本次星期五 12:00 截止後一天起到下一個星期五的規則，週末若有設定菜單也可訂。
                           </div>
-                          {!availableEmployeeMenus.length ? (
-                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                              目前選定日期尚無可訂便當選項，請改選其他日期。
+                          <div className="grid grid-cols-7 gap-2 text-center text-xs uppercase tracking-[0.2em] text-ink/45">
+                            {CALENDAR_WEEKDAY_LABELS.map((label) => (
+                              <div key={label} className="py-2">
+                                {label}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-7 gap-2">
+                            {employeeCalendarCells.map((cell) => {
+                              if (!cell.date) {
+                                return <div key={cell.key} className="aspect-square rounded-2xl bg-transparent" />;
+                              }
+
+                              const isInteractive = cell.isOrderable || !!cell.order;
+                              const buttonClasses = !cell.isWorkday
+                                ? "border-ink/5 bg-ink/5 text-ink/25"
+                                : cell.order
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                                  : cell.isOrderable
+                                    ? "border-pine/20 bg-white text-ink hover:border-pine hover:text-pine"
+                                    : "border-ink/10 bg-white text-ink/45";
+
+                              return (
+                                <button
+                                  key={cell.key}
+                                  className={`aspect-square rounded-2xl border p-2 text-left transition ${buttonClasses} ${
+                                    isInteractive ? "" : "cursor-default"
+                                  }`}
+                                  onClick={() => {
+                                    if (!isInteractive || !cell.date) {
+                                      return;
+                                    }
+                                    openEmployeeCalendarDialog(cell.date);
+                                  }}
+                                  type="button"
+                                >
+                                  <div className="flex h-full flex-col justify-between">
+                                    <div className="text-sm font-semibold">{cell.label}</div>
+                                    {!cell.isWorkday ? (
+                                      <p className="text-[11px] leading-5">非上班日</p>
+                                    ) : cell.order ? (
+                                      <div className="space-y-1">
+                                        <p className="line-clamp-2 text-[11px] font-medium leading-5">
+                                          {cell.order.menuName}
+                                        </p>
+                                        <p className="text-[10px] text-emerald-700">點擊管理</p>
+                                      </div>
+                                    ) : cell.isOrderable ? (
+                                      <p className="text-[11px] leading-5 text-pine">可訂餐</p>
+                                    ) : (
+                                      <p className="text-[11px] leading-5">目前不可訂</p>
+                                    )}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {!employeeCalendarCells.length && hasLoadedEmployeeCalendar ? (
+                            <div className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm text-ink/65">
+                              目前沒有可顯示的行事曆資料。
                             </div>
                           ) : null}
-                          {selectedOrder ? (
-                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                              {formatDateWithWeekday(selectedOrder.orderDate)} 已有訂單，目前為 {selectedOrder.menuName}
+                          {!hasLoadedEmployeeCalendar ? (
+                            <div className="rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm text-ink/65">
+                              行事曆資料載入中。
                             </div>
                           ) : null}
-                          <button
-                            className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-                            onClick={() => void submitOrder()}
-                            type="button"
-                            disabled={loading || !orderForm.menuId || !orderForm.orderDate}
-                          >
-                            {selectedOrder ? "更新當日訂單" : "送出訂餐"}
-                          </button>
-                        </>
-                      )}
+                      </>
                     </div>
                   </div>
                 ) : null}
@@ -2523,6 +2658,103 @@ export default function App() {
                             目前尚無個人訂餐記錄
                           </div>
                         )}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {employeeCalendarDialog.isOpen ? (
+                  <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink/35 px-4 py-6 backdrop-blur-sm">
+                    <div className="w-full max-w-2xl rounded-[1.75rem] border border-ink/10 bg-white p-6 shadow-2xl">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.35em] text-clay/70">Calendar</p>
+                          <h3 className="mt-3 text-2xl font-semibold">
+                            {formatDateWithWeekday(employeeCalendarDialog.date)}
+                          </h3>
+                          <p className="mt-2 text-sm text-ink/65">
+                            {employeeCalendarOrder
+                              ? "這一天已有訂單，可在下方修改或取消。"
+                              : "請選擇當天要訂購的便當。"}
+                          </p>
+                        </div>
+                        <button
+                          className="rounded-full border border-ink/10 px-4 py-2 text-sm"
+                          onClick={closeEmployeeCalendarDialog}
+                          type="button"
+                        >
+                          關閉
+                        </button>
+                      </div>
+
+                      {employeeCalendarOrder ? (
+                        <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
+                          已訂便當：{employeeCalendarOrder.menuName}
+                        </div>
+                      ) : null}
+
+                      {employeeCalendarMenus.length ? (
+                        <label className="mt-6 grid gap-2 text-sm text-ink/70">
+                          便當選項
+                          <select
+                            className="rounded-2xl border border-ink/10 bg-white px-4 py-3 outline-none transition focus:border-clay"
+                            value={orderForm.menuId}
+                            onChange={(event) =>
+                              setOrderForm((current) => ({ ...current, menuId: event.target.value }))
+                            }
+                          >
+                            {employeeCalendarMenus.map((menu) => (
+                              <option key={menu.id} value={menu.id}>
+                                {menu.name} / {menu.category} / {menu.supplierName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                          這一天目前沒有可選便當。
+                        </div>
+                      )}
+
+                      {!employeeCalendarCanModify && employeeCalendarOrder ? (
+                        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                          已超過本次星期五 12:00 的新增/修改截止時間，僅可查看訂單資訊。
+                        </div>
+                      ) : null}
+
+                      <div className="mt-6 flex flex-wrap justify-end gap-3">
+                        {!employeeCalendarOrder ? (
+                          <button
+                            className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => void submitOrder()}
+                            type="button"
+                            disabled={loading || !orderForm.menuId || !orderForm.orderDate}
+                          >
+                            送出訂餐
+                          </button>
+                        ) : null}
+
+                        {employeeCalendarOrder && employeeCalendarCanModify ? (
+                          <button
+                            className="rounded-full bg-ink px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={confirmSubmitEmployeeCalendarOrder}
+                            type="button"
+                            disabled={loading || !orderForm.menuId}
+                          >
+                            修改訂單
+                          </button>
+                        ) : null}
+
+                        {employeeCalendarOrder && canCancelEmployeeOrder(employeeCalendarOrder.orderDate, currentTime) ? (
+                          <button
+                            className="rounded-full border border-ink/10 px-5 py-3 text-sm font-medium text-ink disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => confirmCancelOrder(employeeCalendarOrder.id, employeeCalendarOrder.orderDate)}
+                            type="button"
+                            disabled={loading}
+                          >
+                            取消訂單
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   </div>

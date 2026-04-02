@@ -14,12 +14,14 @@ import com.lovius.bento.dto.SupplierResponse;
 import com.lovius.bento.dto.UpdateSupplierRequest;
 import com.lovius.bento.dto.UpdateMenuRequest;
 import com.lovius.bento.dto.UpdateOrderRequest;
+import com.lovius.bento.dto.WorkCalendarDayDto;
 import com.lovius.bento.exception.ApiException;
 import com.lovius.bento.security.AuthenticatedUser;
 import com.lovius.bento.service.MenuService;
 import com.lovius.bento.service.OrderService;
 import com.lovius.bento.service.SupplierService;
 import com.lovius.bento.service.TokenService;
+import com.lovius.bento.service.WorkCalendarService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
@@ -45,16 +47,28 @@ public class A002Controller {
     private final OrderService orderService;
     private final SupplierService supplierService;
     private final TokenService tokenService;
+    private final WorkCalendarService workCalendarService;
 
     public A002Controller(
             MenuService menuService,
             OrderService orderService,
             SupplierService supplierService,
-            TokenService tokenService) {
+            TokenService tokenService,
+            WorkCalendarService workCalendarService) {
         this.menuService = menuService;
         this.orderService = orderService;
         this.supplierService = supplierService;
         this.tokenService = tokenService;
+        this.workCalendarService = workCalendarService;
+    }
+
+    @GetMapping("/calendar")
+    public ApiSuccessResponse<List<WorkCalendarDayDto>> getEmployeeCalendar(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestParam("year") @jakarta.validation.constraints.Min(2000) @jakarta.validation.constraints.Max(2100) int year,
+            @RequestParam("month") @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(12) int month) {
+        requireRole(authorizationHeader, "employee");
+        return ApiSuccessResponse.success(workCalendarService.getCalendar(year, month));
     }
 
     @GetMapping("/orders/menu")
