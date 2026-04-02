@@ -17,11 +17,13 @@ import {
   createSupplier,
   deleteErrorEmail,
   deleteReportEmail,
+  dismissMenuCheckNotification as dismissMenuCheckNotificationRequest,
   downloadEmployeeOrderReportPdf,
   downloadImportTemplate,
   forgotPassword,
   getEmployeeOrderReports,
   getAdminOrders,
+  getMenuCheckNotification,
   getWorkCalendar,
   getDepartments,
   getEmployeeMenus,
@@ -60,6 +62,7 @@ import type {
   EmployeeSummary,
   ErrorEmail,
   Menu,
+  MenuCheckNotification,
   MonthlyBillingLog,
   Order,
   ReportEmail,
@@ -278,6 +281,21 @@ function toCalendarDate(year: number, month: number, day: number) {
 function defaultWorkdayForDate(year: number, month: number, day: number) {
   const weekday = new Date(year, month - 1, day).getDay();
   return weekday !== 0 && weekday !== 6;
+}
+
+function buildMenuCheckMessage(missingDates: string[]) {
+  return [
+    "未來一個月仍有上班日尚未設定菜單，系統已自動切換到建立菜單頁。",
+    "",
+    ...missingDates.map((date) => `- ${formatDateWithWeekday(date)}`),
+  ].join("\n");
+}
+
+function menuCheckSessionKeyFor(session: SessionUser | null) {
+  if (!session || session.role !== "admin") {
+    return "";
+  }
+  return `${session.role}:${session.username}`;
 }
 
 function buildWorkCalendarDraft(days: WorkCalendarDay[]) {
@@ -532,6 +550,9 @@ export default function App() {
   const [hasLoadedWorkCalendar, setHasLoadedWorkCalendar] = useState(false);
   const [workCalendarImportFile, setWorkCalendarImportFile] = useState<File | null>(null);
   const [workCalendarImportPreview, setWorkCalendarImportPreview] = useState<WorkCalendarDay[]>([]);
+  const [menuCheckNotification, setMenuCheckNotification] = useState<MenuCheckNotification | null>(null);
+  const [menuCheckCheckedFor, setMenuCheckCheckedFor] = useState("");
+  const [menuCheckDismissing, setMenuCheckDismissing] = useState(false);
   const [csvImportFiles, setCsvImportFiles] = useState<Partial<Record<CsvImportType, File | null>>>({});
   const [csvImportResults, setCsvImportResults] = useState<Partial<Record<CsvImportType, CsvImportRow[]>>>({});
   const [csvImportErrors, setCsvImportErrors] = useState<Partial<Record<CsvImportType, CsvImportErrorData | null>>>({});
@@ -632,6 +653,9 @@ export default function App() {
     setHasLoadedWorkCalendar(false);
     setWorkCalendarImportFile(null);
     setWorkCalendarImportPreview([]);
+    setMenuCheckNotification(null);
+    setMenuCheckCheckedFor("");
+    setMenuCheckDismissing(false);
     setSelectedSupplier(null);
     setDeadlineMessage("");
     setCsvImportFiles({});
@@ -671,6 +695,23 @@ export default function App() {
 
     void loadAdminData(session.token, adminOrderFilters, supplierFilters, employeeDepartmentFilter);
   }, [adminOrderFilters, employeeDepartmentFilter, session, supplierFilters]);
+
+  useEffect(() => {
+    const sessionKey = menuCheckSessionKeyFor(session);
+    if (!sessionKey || session?.role !== "admin") {
+      setMenuCheckNotification(null);
+      setMenuCheckCheckedFor("");
+      setMenuCheckDismissing(false);
+      return;
+    }
+
+    if (menuCheckCheckedFor === sessionKey) {
+      return;
+    }
+
+    setMenuCheckCheckedFor(sessionKey);
+    void loadAdminMenuCheckNotification(session.token);
+  }, [menuCheckCheckedFor, session]);
 
   useEffect(() => {
     if (session?.role !== "admin") {
@@ -866,6 +907,11 @@ export default function App() {
     setAdminSupplierTab("supplier-directory");
     setIsWorkCalendarEditing(false);
     setWorkCalendarImportPreview([]);
+    if (session?.role !== "admin") {
+      setMenuCheckNotification(null);
+      setMenuCheckDismissing(false);
+      setMenuCheckCheckedFor("");
+    }
   }, [session]);
 
   useEffect(() => {
@@ -1085,6 +1131,26 @@ export default function App() {
     }
   }
 
+  async function loadAdminMenuCheckNotification(token: string) {
+    try {
+      const response = await getMenuCheckNotification(token);
+      const missingDates = response.data.missingDates;
+      if (!missingDates.length) {
+        setMenuCheckNotification(null);
+        return false;
+      }
+
+      setMenuCheckNotification({ missingDates });
+      setActiveTab("admin-suppliers");
+      setAdminSupplierTab("supplier-menus");
+      openWarningBox(buildMenuCheckMessage(missingDates), "菜單設定提醒");
+      return true;
+    } catch (unknownError) {
+      handleHttpError(unknownError, "菜單缺漏提醒讀取失敗");
+      return false;
+    }
+  }
+
   function handleHttpError(unknownError: unknown, fallbackMessage: string) {
     if (axios.isAxiosError(unknownError)) {
       openErrorBox(unknownError.response?.data?.data?.message ?? fallbackMessage);
@@ -1108,6 +1174,23 @@ export default function App() {
     }
   }
 
+  async function dismissMenuCheckBanner() {
+    if (!session || session.role !== "admin") {
+      return;
+    }
+
+    try {
+      setMenuCheckDismissing(true);
+      await dismissMenuCheckNotificationRequest(session.token);
+      setMenuCheckNotification(null);
+      openSuccessBox("今日菜單缺漏提醒已標記為已處理。", "提醒已關閉");
+    } catch (unknownError) {
+      handleHttpError(unknownError, "菜單缺漏提醒更新失敗");
+    } finally {
+      setMenuCheckDismissing(false);
+    }
+  }
+
   async function submitLogin() {
     if (!validateWarning("請輸入帳號與密碼後再登入。", [!isBlank(loginForm.username), !isBlank(loginForm.password)])) {
       return;
@@ -1116,12 +1199,18 @@ export default function App() {
     try {
       const response = await login(loginForm);
       const nextSession: SessionUser = response.data;
+      const menuCheckSessionKey = menuCheckSessionKeyFor(nextSession);
       applySession(nextSession);
+      setMenuCheckCheckedFor(menuCheckSessionKey);
       setActiveTab(defaultTabForRole(nextSession.role));
       if (nextSession.role === "employee") {
         await loadEmployeeData(nextSession.token);
       } else {
         await loadAdminData(nextSession.token, adminOrderFilters, supplierFilters);
+        const hasMenuCheckReminder = await loadAdminMenuCheckNotification(nextSession.token);
+        if (hasMenuCheckReminder) {
+          return;
+        }
       }
       openSuccessBox(
         nextSession.role === "admin"
@@ -2507,6 +2596,49 @@ export default function App() {
                 </button>
               </div>
               <div className="mt-6 space-y-6">
+                {menuCheckNotification?.missingDates.length ? (
+                  <div className="rounded-[1.75rem] border border-amber-300 bg-[linear-gradient(135deg,#fff5d6_0%,#f7e3b5_55%,#efcf8b_100%)] p-5 text-amber-950 shadow-[0_16px_40px_rgba(119,73,0,0.12)]">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="max-w-3xl">
+                        <p className="text-sm uppercase tracking-[0.35em] text-amber-900/70">Menu Alert</p>
+                        <h3 className="mt-3 text-xl font-semibold">未來一個月仍有上班日尚未設定菜單</h3>
+                        <p className="mt-3 text-sm leading-7 text-amber-950/80">
+                          系統已自動切換到「供應商管理 / 建立菜單」，請先補齊以下日期的菜單設定。
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {menuCheckNotification.missingDates.map((date) => (
+                            <span
+                              key={date}
+                              className="rounded-full border border-amber-900/10 bg-white/70 px-3 py-1 text-sm"
+                            >
+                              {formatDateWithWeekday(date)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          className="rounded-full border border-amber-900/15 bg-white/80 px-4 py-2 text-sm text-amber-950"
+                          onClick={() => {
+                            setActiveTab("admin-suppliers");
+                            setAdminSupplierTab("supplier-menus");
+                          }}
+                          type="button"
+                        >
+                          前往建立菜單
+                        </button>
+                        <button
+                          className="rounded-full bg-amber-900 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => void dismissMenuCheckBanner()}
+                          type="button"
+                          disabled={menuCheckDismissing}
+                        >
+                          {menuCheckDismissing ? "處理中..." : "今日不再提醒"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <TabBar tabs={currentTabs} activeTab={activeTab} onChange={setActiveTab} />
 
                 {activeTab === "admin-orders" ? (

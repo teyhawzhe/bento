@@ -12,6 +12,7 @@ import type {
   LoginRequest,
   LoginResponse,
   Menu,
+  MenuCheckNotification,
   MonthlyBillingLog,
   Order,
   ReportEmail,
@@ -707,6 +708,22 @@ export function importWorkCalendar(token: string, file: File, confirm: boolean) 
   formData.append("file", file);
   formData.append("confirm", String(confirm));
   return unwrap<WorkCalendarDay[]>(api.post("/admin/calendar/import", formData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }));
+}
+
+export function getMenuCheckNotification(token: string) {
+  return unwrap<MenuCheckNotification>(api.get("/admin/notifications/menu-check", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }));
+}
+
+export function dismissMenuCheckNotification(token: string) {
+  return unwrap<void>(api.post("/admin/notifications/menu-check/dismiss", {}, {
     headers: {
       Authorization: `Bearer ${token}`,
     },

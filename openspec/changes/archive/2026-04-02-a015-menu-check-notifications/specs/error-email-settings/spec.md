@@ -1,7 +1,5 @@
-## Purpose
-定義錯誤通知信箱設定 API，以及其在 A003 供應商通知異常流程中的收件用途。
+## MODIFIED Requirements
 
-## Requirements
 ### Requirement: 錯誤通知信箱 API 必須符合 OpenAPI 契約
 系統 SHALL 讓錯誤通知信箱清單的查詢、新增與刪除 API 以 `status/data` 格式回傳，並作為 A003 供應商通知排程發生錯誤時的收件來源，同時供 A015 菜單缺漏提醒寄信使用。
 

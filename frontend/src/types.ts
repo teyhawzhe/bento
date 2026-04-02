@@ -110,6 +110,10 @@ export interface WorkCalendarDay {
   isWorkday: boolean;
 }
 
+export interface MenuCheckNotification {
+  missingDates: string[];
+}
+
 export interface Menu {
   id: number;
   supplierId: number;

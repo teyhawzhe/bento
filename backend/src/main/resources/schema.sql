@@ -143,3 +143,21 @@ CREATE TABLE IF NOT EXISTS work_calendar (
     is_workday BOOLEAN NOT NULL,
     PRIMARY KEY (date)
 );
+
+CREATE TABLE IF NOT EXISTS menu_notification_log (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    notify_date DATE NOT NULL,
+    missing_from DATE NOT NULL,
+    missing_to DATE NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_menu_notification_log_notify_date (notify_date),
+    KEY idx_menu_notification_log_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS menu_notification_dismiss (
+    dismiss_date DATE NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (dismiss_date)
+);

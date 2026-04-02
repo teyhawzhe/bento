@@ -21,6 +21,9 @@ public class SchemaMigrationInitializer {
             ensureEmployeeDepartmentColumn(jdbcTemplate);
             ensureRefreshTokensTable(jdbcTemplate);
             ensureNotificationLogsTable(jdbcTemplate);
+            ensureWorkCalendarTable(jdbcTemplate);
+            ensureMenuNotificationLogTable(jdbcTemplate);
+            ensureMenuNotificationDismissTable(jdbcTemplate);
             logger.info("Department schema migration finished");
         };
     }
@@ -115,6 +118,48 @@ public class SchemaMigrationInitializer {
                 )
                 """);
         logger.info("Ensured notification_logs table exists");
+    }
+
+    private void ensureWorkCalendarTable(JdbcTemplate jdbcTemplate) {
+        jdbcTemplate.execute(
+                """
+                CREATE TABLE IF NOT EXISTS work_calendar (
+                    date DATE NOT NULL,
+                    is_workday BOOLEAN NOT NULL,
+                    PRIMARY KEY (date)
+                )
+                """);
+        logger.info("Ensured work_calendar table exists");
+    }
+
+    private void ensureMenuNotificationLogTable(JdbcTemplate jdbcTemplate) {
+        jdbcTemplate.execute(
+                """
+                CREATE TABLE IF NOT EXISTS menu_notification_log (
+                    id BIGINT NOT NULL AUTO_INCREMENT,
+                    notify_date DATE NOT NULL,
+                    missing_from DATE NOT NULL,
+                    missing_to DATE NOT NULL,
+                    status VARCHAR(20) NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    UNIQUE KEY uk_menu_notification_log_notify_date (notify_date),
+                    KEY idx_menu_notification_log_status (status)
+                )
+                """);
+        logger.info("Ensured menu_notification_log table exists");
+    }
+
+    private void ensureMenuNotificationDismissTable(JdbcTemplate jdbcTemplate) {
+        jdbcTemplate.execute(
+                """
+                CREATE TABLE IF NOT EXISTS menu_notification_dismiss (
+                    dismiss_date DATE NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (dismiss_date)
+                )
+                """);
+        logger.info("Ensured menu_notification_dismiss table exists");
     }
 
     private Long getOrCreateDefaultDepartment(JdbcTemplate jdbcTemplate) {
