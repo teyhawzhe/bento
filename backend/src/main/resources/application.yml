@@ -19,6 +19,8 @@ app:
       starttls: ${APP_MAIL_SMTP_STARTTLS:true}
   pdf:
     font-path: ${APP_PDF_FONT_PATH:}
+  sample-data:
+    enabled: ${APP_SAMPLE_DATA_ENABLED:false}
 
 spring:
   profiles:

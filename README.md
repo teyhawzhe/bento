@@ -97,6 +97,7 @@ cd backend && SPRING_PROFILES_ACTIVE=production ./gradlew bootRun
 
 ```bash
 ./scripts/backend-dev.sh
+./scripts/backend-dev-sample.sh
 ./scripts/backend-staging.sh
 ./scripts/backend-production.sh
 ```
@@ -126,6 +127,7 @@ mail delivery 採 `config-based` 切換：
 - `APP_MAIL_SMTP_AUTH`
 - `APP_MAIL_SMTP_STARTTLS`
 - `APP_PDF_FONT_PATH`
+- `APP_SAMPLE_DATA_ENABLED`
 
 Gmail SMTP 測試範例：
 
@@ -160,13 +162,17 @@ PDF 中文字型：
 ```bash
 ./scripts/dev-frontend.sh
 ./scripts/backend-dev.sh
+./scripts/backend-dev-sample.sh
 ./scripts/dev-compose.sh
+./scripts/dev-compose-sample.sh
 ```
 
 - `dev-frontend.sh`: 自動安裝前端依賴後啟動 Vite
 - `backend-dev.sh` / `backend-staging.sh` / `backend-production.sh`: 直接以指定 profile 啟動 backend
+- `backend-dev-sample.sh`: 以 `dev` profile 啟動 backend，並匯入 sample 資料
 - `backend-dev.bat` / `backend-staging.bat` / `backend-production.bat`: Windows 版本的 backend 啟動腳本
 - `dev-compose.sh`: 直接執行 `docker compose up --build`
+- `dev-compose-sample.sh`: 以 `docker compose up --build` 啟動，並匯入 sample 資料
 
 前端 API 連線策略：
 
@@ -182,6 +188,42 @@ PDF 中文字型：
 
 目前後端已改為 JDBC + MySQL schema 邊界，`mysql` 服務可直接承接 `employees`、`suppliers`、`menus`、`orders` 等資料表。
 `docker compose` 會預設注入 `SPRING_PROFILES_ACTIVE=dev` 與 `APP_MAIL_MODE=mock`，也可在執行前自行覆寫。
+
+### Sample 資料匯入
+
+sample 資料預設不會匯入，只有在明確指定 `APP_SAMPLE_DATA_ENABLED=true` 時才會建立。
+
+匯入內容：
+
+- 基礎帳號仍會建立 `alice`、`admin`、`disabled.user`
+- 額外 sample 會建立從今天到當年 `8/31` 的平日 `MENU`
+- 會替 `alice` 建立同期間的平日便當訂單資料
+- 可重複執行，已存在的 sample `MENU` / 訂單不會重複新增
+
+啟動 backend 並匯入 sample：
+
+```bash
+./scripts/backend-dev-sample.sh
+```
+
+或直接用環境變數：
+
+```bash
+cd backend
+APP_SAMPLE_DATA_ENABLED=true ./gradlew bootRun
+```
+
+用 Docker Compose build 並匯入 sample：
+
+```bash
+./scripts/dev-compose-sample.sh
+```
+
+或直接：
+
+```bash
+APP_SAMPLE_DATA_ENABLED=true docker compose up --build
+```
 
 ### Frontend Image Build Strategy
 
